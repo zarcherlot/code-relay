@@ -1,51 +1,89 @@
 # Code Relay
 
-![Code Relay Logo](assets/icon.png)
+<div align="center">
+  <img src="assets/icon.png" alt="Code Relay Logo" width="96">
+  <br>
+  <sub>build, verify, and relay</sub>
+</div>
 
-The Code Relay logo is the final red wax-seal coding-agent mark in [`assets/icon.png`](assets/icon.png).
+[中文版](README.zh-CN.md)
 
 ![Code Relay workflow](assets/overview.png)
 
-Code Relay carries a task from the development host to the target host and returns a validated, auditable receipt for the same repository branch.
+> **Code Relay is a cross-machine development and verification collaboration tool that lets Codex hand work between a development host and a target host.**
 
-Code Relay is an open-source Codex plugin for a branch-scoped development and verification loop between two hosts:
+## Product overview
 
-- **A / orchestrator** develops in Codex, publishes a task, and analyzes the result.
-- **B / verifier** joins a specific repository and remote branch, validates the requested commit, and publishes a structured receipt.
-- **Git** is the shared transport for code, tasks, receipts, and audit history. No database or message queue is required for the MVP.
+Relay is a cross-machine development and verification collaboration tool for Codex. AI on the development host implements the request; the verification environment on the target host runs real tests; the result returns as a structured receipt and can automatically drive the next repair iteration.
 
-The user-facing entry point is the Codex plugin. The bundled MCP bridge, watcher, and CLI are runtime components used by the plugin and CI.
+It is designed for teams that need verification across operating systems, private networks, GPUs, hardware, or production-like environments.
+
+Relay is more than “send a command to another machine.” It connects **development, publishing, real-environment verification, result delivery, and failure-driven repair** into one traceable loop.
+
+## Product logic
+
+```text
+User describes the request in Codex
+        ↓
+Dev Host: AI develops, commits, and merges the code
+        ↓
+Relay: carries the exact commit and task
+        ↓
+Target Host: runs the validation in the real target environment
+        ↓
+Receipt: returns structured results and evidence
+        ↓
+Pass → done          Fail → repair and retry          Blocked → ask for a decision
+```
+
+A typical task can start with one sentence:
+
+> Implement idempotency for the payment callback, merge it, and have the target host verify it; if verification fails, keep repairing until it passes.
+
+Codex handles development and orchestration, Relay carries the task between hosts, and the target host performs the verification. Users see meaningful stages such as “verifying,” “verification failed,” and “done,” rather than a wall of GitHub Actions details.
+
+## Who thinks of using Relay?
+
+Relay is for teams that often find themselves saying, “It works here, but we need another machine to prove it”:
+
+- **Heavy AI-coding users**: the laptop has no GPU, so a GPU server should verify the model code automatically instead of requiring manual packaging and SSH.
+- **Backend developers**: a payment callback cannot be reproduced locally and must run against the real database, queue, and private-network dependencies.
+- **DevOps and QA engineers**: every merge currently requires a manual request for regression testing on another machine, making tests easy to miss and hard to audit.
+- **GPU / AI engineers**: the code passes on CPU but must be verified on a machine with the correct CUDA stack.
+- **Hardware, IoT, and robotics teams**: only the machine connected to the real device can prove that the serial port, camera, or sensor actually works.
+- **Private-network and enterprise teams**: the development host cannot access the production-like services, so an isolated target host must perform the verification.
+- **Browser-automation teams**: local browser versions differ from production, so the user journey must run in a specified environment.
 
 ## What the MVP provides
 
-- Branch-scoped binding: `repository + refs/heads/<branch>`.
-- A natural-language project bind action that creates the B invitation automatically.
-- A short-lived `code-relay://join/...` invitation with repository/ref preview; legacy `codex-relay://` links remain readable.
-- Safe B bootstrap: if the current Codex window has no repository, an approved empty workspace is cloned and associated automatically.
-- A background watcher that fetches only the subscribed ref and materializes new tasks into a private inbox without overwriting the active worktree.
-- Idempotent task publication, source-commit binding, receipt validation, command allowlisting, timeout handling, and failure/blocked receipts.
-- GitHub Actions support for a `codex-b` self-hosted runner.
+- **Branch-scoped binding**: identify the project with `repository + refs/heads/<branch>`.
+- **Natural-language setup**: ask Codex to enable Relay and generate a target-host join link.
+- **Short-lived invitation links**: `code-relay://join/...` includes a repository and branch preview.
+- **Safe target-host bootstrap**: an unbound workspace can clone the approved repository; non-empty or unrelated directories are never overwritten.
+- **Background watcher**: fetch only the subscribed remote ref and materialize new tasks into a private inbox without replacing the active worktree.
+- **Reliable receipts**: idempotent task publication, source-commit binding, receipt validation, command allowlisting, timeouts, and failure/blocked receipts.
+- **GitHub Actions support**: run target-environment verification on a `codex-b` self-hosted runner.
 
 ## Install from Codex
 
 Install **Code Relay** from the Codex plugin UI. Users do not need to run `pip install`, `conda install`, or a separate relay installer.
 
-### A: bind the current project
+### Dev Host: bind the current project
 
 Open the project in Codex and say:
 
-> 为当前工程当前分支启用 Code Relay，并生成 B 验证端加入链接。
+> Enable Code Relay for the current project and branch, then generate a Target Host join link.
 
 After showing the resolved remote repository and branch, the plugin writes `.code-relay/project.json`, adds the project integration assets, pushes the binding, and returns a short-lived invitation link.
 
-### B: join and verify
+### Target Host: join and verify
 
-Install the same plugin on B and paste the invitation link into the Codex window. After confirmation:
+Install the same plugin on the Target Host and paste the invitation link into Codex. After confirmation:
 
-1. An empty/unassociated workspace is cloned to the invited repository and branch.
+1. An empty or unassociated workspace is cloned to the invited repository and branch.
 2. A verifier binding is written and the watcher starts automatically.
 3. New tasks are fetched from the bound remote ref and placed in the private inbox.
-4. The verifier runtime or a configured host adapter executes the declared validation plan and publishes a receipt.
+4. The verifier runtime or configured host adapter executes the declared validation plan and publishes a receipt.
 
 If the current directory is non-empty or belongs to another project, Code Relay leaves it untouched and asks for a separate target directory.
 
@@ -54,15 +92,13 @@ The complete user journey is documented in [USER_GUIDE.md](USER_GUIDE.md).
 ## Repository layout
 
 ```text
-.codex-plugin/plugin.json       # formal Codex plugin manifest
+.codex-plugin/plugin.json       # Codex plugin manifest
 .mcp.json                       # plugin-local MCP server
 skills/                         # orchestrator and verifier Skills
-code_relay/                     # public Python facade
-codex_relay/                    # compatibility facade
-codex_mate/                     # compatibility runtime namespace
+code_relay/                     # Python runtime and facade
 schemas/                        # task and receipt JSON Schemas
 templates/                      # task and receipt Markdown templates
-.github/workflows/              # optional B self-hosted runner workflow
+.github/workflows/              # optional Target Host self-hosted workflow
 tests/                          # local MVP and end-to-end tests
 ```
 
@@ -72,7 +108,7 @@ The repository is dependency-light and targets Python 3.10+:
 
 ```powershell
 python -m unittest discover -s tests -v
-python -m compileall -q codex_mate code_relay codex_relay tests scripts
+python -m compileall -q code_relay tests scripts
 ```
 
 The CLI is a developer/CI fallback, not the normal installation path:
@@ -89,17 +125,19 @@ The optional Go runtime can be built for Linux and Windows:
 ./scripts/build-agent.ps1
 ```
 
-Use `code-relay-agent watcher --root .` or `code-relay-agent daemon --root . --role verifier` on a verifier host. Set `CODE_RELAY_RUNTIME=go` to let the Python MCP facade select it automatically.
+Use `code-relay-agent watcher --root .` or `code-relay-agent daemon --root . --role verifier` on a Target Host. Set `CODE_RELAY_RUNTIME=go` to let the Python MCP facade select it automatically.
 
 ## Security and operating boundaries
 
-Code Relay is an MVP. Validation commands run without a shell, are allowlisted, have bounded output and timeouts, and destructive command patterns are blocked; users must still review task content and runner permissions. Invitations are short-lived bearer links by default; controlled deployments can set `CODE_RELAY_INVITE_SECRET` (the same 32+ character secret on A and B) to enable HMAC integrity checks. The legacy `CODEX_RELAY_INVITE_SECRET` remains accepted during migration. Per-user authorization and revocation still require a hosted control plane.
+Code Relay is an MVP. Validation commands run without a shell, are allowlisted, have bounded output and timeouts, and destructive command patterns are blocked. Users must still review task content and runner permissions.
+
+Invitations are short-lived bearer links by default. Controlled deployments can set the same 32+ character `CODE_RELAY_INVITE_SECRET` on the Dev Host and Target Host to enable HMAC integrity checks. The legacy `CODEX_RELAY_INVITE_SECRET` remains accepted during migration. Per-user authorization and revocation still require a hosted control plane.
 
 Read [SECURITY.md](SECURITY.md) before exposing a runner or webhook, [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.
 
 ## Project status
 
-The current release is an MVP reference implementation. The protocol and directory layout are intentionally small so that a team can inspect, fork, and replace individual runtime components.
+The current release is an MVP reference implementation. The protocol and directory layout are intentionally small so that a team can inspect, reuse, or replace individual runtime components.
 
 ## License
 
