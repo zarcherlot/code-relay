@@ -2,7 +2,7 @@
 
 ![Codex Relay Logo](assets/icon.png)
 
-The Codex Relay logo is the red wax-seal coding-agent mark in [`assets/icon.png`](assets/icon.png).
+The Codex Relay logo is the final red wax-seal coding-agent mark in [`assets/icon.png`](assets/icon.png).
 
 Codex Relay is an open-source Codex plugin for a branch-scoped development and verification loop between two hosts:
 
