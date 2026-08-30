@@ -38,7 +38,7 @@ jobs:
           test "$(./dist/code-relay-agent-linux-amd64 version)" = "code-relay-agent $version"
           printf '{"product":"Code Relay","version":"%s","module":"github.com/zarcherlot/code-relay","source_commit":"%s","go_version":"%s"}\n' "$version" "$GITHUB_SHA" "$(go version)" > dist/release.json
           printf '{"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"metadata":{"component":{"type":"application","name":"code-relay-agent","version":"%s"}},"components":[]}\n' "$version" > dist/sbom.cdx.json
-          sha256sum dist/* > dist/SHA256SUMS
+          (cd dist && sha256sum * > SHA256SUMS)
           (cd dist && sha256sum -c SHA256SUMS)
       - name: Attest build provenance
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2

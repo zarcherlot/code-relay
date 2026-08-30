@@ -107,10 +107,12 @@ internal/relay/*_test.go        # unit, protocol, concurrency, and end-to-end te
 The repository is dependency-light and requires Go 1.22+:
 
 ```powershell
-go test -race ./...
+go test ./...
 go vet ./...
 go build ./cmd/code-relay-agent
 ```
+
+CI additionally runs `go test -race ./...` on Linux, where the required C toolchain is controlled.
 
 The CLI is a developer/CI fallback, not the normal installation path:
 

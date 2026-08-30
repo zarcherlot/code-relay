@@ -18,9 +18,9 @@ for target in "${targets[@]}"; do
 done
 
 if command -v sha256sum >/dev/null 2>&1; then
-  sha256sum "$output"/code-relay-agent-* > "$output/SHA256SUMS"
+  (cd "$output" && sha256sum code-relay-agent-* > SHA256SUMS)
 elif command -v shasum >/dev/null 2>&1; then
-  shasum -a 256 "$output"/code-relay-agent-* > "$output/SHA256SUMS"
+  (cd "$output" && shasum -a 256 code-relay-agent-* > SHA256SUMS)
 else
   echo "sha256sum or shasum is required" >&2
   exit 1

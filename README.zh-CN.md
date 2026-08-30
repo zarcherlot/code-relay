@@ -105,10 +105,12 @@ internal/relay/*_test.go        # 单元、协议、并发和端到端测试
 项目依赖较少，需要 Go 1.22+：
 
 ```powershell
-go test -race ./...
+go test ./...
 go vet ./...
 go build ./cmd/code-relay-agent
 ```
+
+CI 还会在具备固定 C 工具链的 Linux 环境运行 `go test -race ./...`。
 
 CLI 是开发和 CI 的备用入口，不是普通用户的安装入口：
 

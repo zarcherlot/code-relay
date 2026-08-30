@@ -14,13 +14,13 @@ Thanks for helping improve Code Relay. The project is intentionally small: chang
 Run the complete test and compile checks from the repository root:
 
 ```powershell
-go test -race ./...
+go test ./...
 go vet ./...
 go build ./cmd/code-relay-agent
 ./scripts/package-plugin.ps1 -Output dist/plugin-smoke
 ```
 
-The packaging command builds the native executable, checks its version, and parses the generated `.mcp.json`. When changing a Skill, also verify its frontmatter before submitting.
+CI additionally runs the race detector on Linux. The packaging command builds the native executable, checks its version, and parses the generated `.mcp.json`. When changing a Skill, also verify its frontmatter before submitting.
 
 ## Pull requests
 
