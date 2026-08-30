@@ -21,7 +21,10 @@ func acquireTaskLock(root, taskID string, timeout time.Duration) (*taskLock, err
 		}
 		return '_'
 	}, taskID)
-	path := filepath.Join(root, newMeta, "locks", "task-"+name+".lock")
+	path, err := projectPath(root, newMeta, "locks", "task-"+name+".lock")
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
@@ -37,7 +40,7 @@ func acquireTaskLock(root, taskID string, timeout time.Duration) (*taskLock, err
 		if !errors.Is(err, os.ErrExist) {
 			return nil, err
 		}
-		if info, statErr := os.Stat(path); statErr == nil && time.Since(info.ModTime()) > time.Hour {
+		if info, statErr := os.Stat(path); statErr == nil && time.Since(info.ModTime()) > 2*time.Hour {
 			_ = os.Remove(path)
 			continue
 		}

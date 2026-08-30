@@ -17,9 +17,10 @@ Run the complete test and compile checks from the repository root:
 go test -race ./...
 go vet ./...
 go build ./cmd/code-relay-agent
+./scripts/package-plugin.ps1 -Output dist/plugin-smoke
 ```
 
-When changing `.codex-plugin/plugin.json`, `.mcp.json`, or a Skill, also verify JSON and frontmatter before submitting.
+The packaging command builds the native executable, checks its version, and parses the generated `.mcp.json`. When changing a Skill, also verify its frontmatter before submitting.
 
 ## Pull requests
 

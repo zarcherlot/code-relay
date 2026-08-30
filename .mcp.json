@@ -1,6 +1,6 @@
 {
   "code-relay": {
-    "command": "./bin/code-relay-agent",
-    "args": ["mcp-stdio"]
+    "command": "go",
+    "args": ["run", "./cmd/code-relay-agent", "mcp-stdio"]
   }
 }

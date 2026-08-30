@@ -6,6 +6,9 @@ on:
       - "cmd/**"
       - "internal/**"
       - "schemas/**"
+      - "scripts/**"
+      - ".codex-plugin/**"
+      - ".mcp.json"
       - "go.mod"
       - ".github/workflows/go-runtime.yml"
   pull_request:
@@ -13,6 +16,9 @@ on:
       - "cmd/**"
       - "internal/**"
       - "schemas/**"
+      - "scripts/**"
+      - ".codex-plugin/**"
+      - ".mcp.json"
       - "go.mod"
 
 permissions:
@@ -25,10 +31,47 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.22"
-      - run: test -z "$(gofmt -l cmd internal)"
+      - name: Check formatting
+        shell: bash
+        run: |
+          unformatted="$(find cmd internal -type f -name '*.go' -print0 | xargs -0 gofmt -l)"
+          test -z "$unformatted"
       - run: go test -race ./...
       - run: go vet ./...
+      - name: Package and smoke-test plugin
+        shell: pwsh
+        run: ./scripts/package-plugin.ps1 -Output dist/plugin-smoke
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.22"
+      - name: Build all supported targets
+        run: ./scripts/build-agent.sh dist
+      - name: Reject committed credential patterns
+        shell: bash
+        run: |
+          if git grep -nE '(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,})'; then
+            echo "possible credential committed to the repository" >&2
+            exit 1
+          fi
+      - name: Verify checksums and Linux binary
+        run: |
+          cd dist
+          sha256sum -c SHA256SUMS
+          test "$(./code-relay-agent-linux-amd64 version)" = "code-relay-agent 2.0.0"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: code-relay-agent
+          path: dist/

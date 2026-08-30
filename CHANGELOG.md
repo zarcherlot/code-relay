@@ -2,6 +2,24 @@
 
 All notable changes to Code Relay are recorded here. The project is currently in the MVP stage.
 
+## [2.0.0] - 2026-08-30
+
+### Breaking
+
+- Removed all legacy naming and compatibility paths; only `code-relay`, `.code-relay`, and `code-relay-agent` remain.
+- Standardized the product on the Go runtime and a packaged native MCP executable for Linux, macOS, and Windows.
+
+### Security and reliability
+
+- Added root-confined path validation, symlink-component rejection, remote credential sanitization, durable cross-platform atomic replacement, bounded process output, and child-process-tree timeouts.
+- Removed shell interpreters and inline eval/exec escape modes from validation policy.
+- Added project-scoped queue/receipt locks, invalid-receipt recovery, explicit worktree failure receipts, and fail-closed one-time invitation consumption.
+- Hardened MCP JSON-RPC validation and recovery, pinned GitHub Actions by commit, and added checksums, SBOM metadata, provenance, and package smoke tests.
+
+### Testing
+
+- Added cross-platform unit, concurrent state, malformed protocol, invitation race, and publish-to-analysis end-to-end coverage.
+
 ## [1.0.0] - 2026-08-30
 
 ### Breaking

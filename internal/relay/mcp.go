@@ -3,6 +3,7 @@ package relay
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,22 @@ type mcpRequest struct {
 	ID      any            `json:"id"`
 	Method  string         `json:"method"`
 	Params  map[string]any `json:"params"`
+	HasID   bool           `json:"-"`
+}
+
+func (request *mcpRequest) UnmarshalJSON(data []byte) error {
+	type requestAlias mcpRequest
+	var decoded requestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*request = mcpRequest(decoded)
+	_, request.HasID = fields["id"]
+	return nil
 }
 
 func mcpTools() []map[string]any {
@@ -39,21 +56,37 @@ func mcpTools() []map[string]any {
 }
 
 func MCPStdio(in io.Reader, out io.Writer) error {
-	scanner := bufio.NewScanner(in)
-	scanner.Buffer(make([]byte, 4096), 2*maxTask)
+	reader := bufio.NewReaderSize(in, 64*1024)
 	encoder := json.NewEncoder(out)
 	encoder.SetEscapeHTML(false)
-	for scanner.Scan() {
-		if len(scanner.Bytes()) == 0 {
+	for {
+		line, oversized, err := readMCPLine(reader, 2*maxTask)
+		if errors.Is(err, io.EOF) && len(line) == 0 && !oversized {
+			return nil
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		if oversized {
+			_ = encoder.Encode(mcpError(nil, -32600, "request exceeds maximum size"))
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			continue
+		}
+		if len(line) == 0 {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			continue
 		}
 		var request mcpRequest
-		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
-			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": nil, "error": map[string]any{"code": -32700, "message": err.Error()}})
+		if decodeErr := json.Unmarshal(line, &request); decodeErr != nil {
+			_ = encoder.Encode(mcpError(nil, -32700, decodeErr.Error()))
 			continue
 		}
 		response := handleMCP(request)
-		if response != nil {
+		if response != nil && (request.HasID || request.JSONRPC != "2.0" || request.Method == "") {
 			if err := encoder.Encode(response); err != nil {
 				return err
 			}
@@ -61,11 +94,16 @@ func MCPStdio(in io.Reader, out io.Writer) error {
 				_ = flusher.Flush()
 			}
 		}
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
 	}
-	return scanner.Err()
 }
 
 func handleMCP(request mcpRequest) map[string]any {
+	if request.JSONRPC != "2.0" || request.Method == "" {
+		return mcpError(request.ID, -32600, "invalid JSON-RPC request")
+	}
 	if request.Method == "notifications/initialized" {
 		return nil
 	}
@@ -83,8 +121,11 @@ func handleMCP(request mcpRequest) map[string]any {
 	case "tools/list":
 		return response(map[string]any{"tools": mcpTools()})
 	case "tools/call":
-		name, _ := request.Params["name"].(string)
-		args, _ := request.Params["arguments"].(map[string]any)
+		name, nameOK := request.Params["name"].(string)
+		args, argsOK := request.Params["arguments"].(map[string]any)
+		if !nameOK || name == "" || !argsOK {
+			return mcpError(request.ID, -32602, "tools/call requires string name and object arguments")
+		}
 		value, err := callMCPTool(name, args)
 		if err != nil {
 			return errResponse(err)
@@ -96,7 +137,31 @@ func handleMCP(request mcpRequest) map[string]any {
 	}
 }
 
-var versionString = "1.0.0"
+func mcpError(id any, code int, message string) map[string]any {
+	return map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": code, "message": message}}
+}
+
+func readMCPLine(reader *bufio.Reader, limit int) ([]byte, bool, error) {
+	line := make([]byte, 0, min(limit, 64*1024))
+	oversized := false
+	for {
+		part, err := reader.ReadSlice('\n')
+		if !oversized && len(line)+len(part) <= limit {
+			line = append(line, part...)
+		} else if len(part) > 0 {
+			oversized = true
+		}
+		if err == nil {
+			return line, oversized, nil
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
+		}
+		return line, oversized, err
+	}
+}
+
+var versionString = "2.0.0"
 
 func SetVersion(value string) {
 	if value != "" {

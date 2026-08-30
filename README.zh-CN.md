@@ -60,7 +60,6 @@ Relay 适合那些经常遇到“本地能写，但必须去另一台机器才�
 - **安全的目标机初始化**：目标机没有绑定项目时，自动克隆获准的仓库；非空目录或其他项目不会被覆盖。
 - **GitHub Actions 验证**：将任务路由到带 `codex-b` 标签的 self-hosted runner，由 Go agent 在隔离 worktree 中验证精确 commit。
 - **可靠回执**：任务幂等发布、绑定 source commit、校验回执、命令白名单、超时控制，以及失败/阻塞回执。
-- **GitHub Actions 支持**：可使用带 `codex-b` 标签的 self-hosted runner 执行目标环境验证。
 
 ## 从 Codex 安装
 
@@ -91,14 +90,14 @@ Relay 适合那些经常遇到“本地能写，但必须去另一台机器才�
 
 ```text
 .codex-plugin/plugin.json       # Codex 插件清单
-.mcp.json                       # 插件本地 MCP 服务
+.mcp.json                       # 源码工作区 MCP 配置（Go 开发回退入口）
 skills/                         # 编排端和验证端 Skills
 cmd/code-relay-agent/           # Go CLI 与 MCP 入口
 internal/relay/                 # Go 协议、执行器、Git 与 MCP 实现
 schemas/                        # task 和 receipt JSON Schema
 templates/                      # task 和 receipt Markdown 模板
 .github/workflows/              # 可选的目标机 self-hosted runner 工作流
-tests/                          # 本地 MVP 与端到端测试
+internal/relay/*_test.go        # 单元、协议、并发和端到端测试
 ```
 
 ## 开发者本地验证
@@ -131,15 +130,17 @@ Go 运行时支持 Linux、macOS 和 Windows（macOS 同时提供 Intel 与 Appl
 ./scripts/package-plugin.ps1
 ```
 
+源码工作区的 `.mcp.json` 使用跨平台的 `go run`，方便开发者直接调试；插件包会替换为当前平台的原生二进制，普通用户运行时不需要安装 Go。
+
 在 macOS 或 Linux 上也可以直接运行 `./scripts/build-agent.sh`。版本发布会生成五个 agent 二进制、`release.json`、SBOM 元数据和 `SHA256SUMS`。
 
-在目标机上安装带 `codex-b` 标签的 GitHub Actions self-hosted runner，并将 `code-relay-agent` 放入工程的 `bin/` 目录。workflow 会调用 `run-pending`，不需要 Relay watcher、daemon 或 Python runtime。
+在目标机上安装带 `codex-b` 标签的 GitHub Actions self-hosted runner。workflow 会构建匹配平台的 agent 并调用 `run-pending`，不需要预装 Relay daemon 或 Python runtime。
 
 排查主机环境可运行 `code-relay-agent doctor --root .`。
 
 ## 安全边界
 
-Code Relay 目前是 MVP。验证命令不经过 shell 执行，必须通过白名单，并受到输出大小和超时限制；危险命令模式会被拦截。用户仍需审阅任务内容和 runner 权限。
+Code Relay 目前是 MVP。验证命令不经过 shell 执行，shell 解释器与内联 eval 模式会被拒绝，输出大小和执行时间受到限制；危险命令模式会被拦截。用户仍需审阅任务内容和 runner 权限。
 
 默认邀请链接是短时 bearer link；受控部署可以在 Dev Host 和 Target Host 设置相同的 32 位以上 `CODE_RELAY_INVITE_SECRET`，启用 HMAC 完整性校验。用户级授权、撤销和集中式权限管理仍需要托管控制平面。
 
@@ -147,7 +148,7 @@ Code Relay 目前是 MVP。验证命令不经过 shell 执行，必须通过白�
 
 ## 项目状态
 
-当前版本是 MVP 参考实现。协议和目录结构保持小而清晰，方便团队检查、复用，或替换其中的运行时组件。
+当前不兼容大版本为 Code Relay 2.0，是 Go-only 的 MVP 参考实现。协议和目录结构保持小而清晰，方便团队检查、复用，或替换其中的运行时组件。
 
 ## 许可证
 

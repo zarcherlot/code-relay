@@ -80,7 +80,7 @@ code-relay-agent doctor --root .
 - `iterate`：展示失败检查，修复代码后创建新的子任务，例如 `task-002`
 - `blocked`：停止自动修改，先让用户决定如何处理
 
-`done` 返回退出码 0；`iterate` 和 `blocked` 返回退出码 2，便于脚本或 daemon 判断。
+CLI 会以结构化 JSON 返回 `done`、`iterate` 或 `blocked` 结论，供 Codex 或脚本读取。
 
 ## 4. B 端如何验证
 
@@ -131,5 +131,5 @@ receipts/<task_id>/receipt.md
 - 在 A、B 主机安全配置相同的 `CODE_RELAY_INVITE_SECRET`（至少 32 个字符），让邀请链接启用 HMAC 完整性校验；不要把该值写进 Git、task、receipt 或聊天记录。
 - GitHub Token 只授予仓库内容读写和 Actions 所需的最小权限。
 - 不要把 Token、密码或其他密钥写入 task、receipt 或日志。
-- 不要把未经审查的任意 shell 脚本放入 Validation Plan。
-- 生产环境保留 `.code-relay/events.jsonl` 和 Git 历史，便于审计与故障恢复。
+- 不要把未经审查的任意 shell 脚本放入 Validation Plan；运行时也会拒绝 shell 解释器和内联 eval 模式。
+- 保留 GitHub Actions 日志、receipt 和 Git 历史，便于审计与故障恢复。

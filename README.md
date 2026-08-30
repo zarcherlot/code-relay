@@ -62,7 +62,6 @@ Relay is for teams that often find themselves saying, “It works here, but we n
 - **Safe target-host bootstrap**: an unbound workspace can clone the approved repository; non-empty or unrelated directories are never overwritten.
 - **GitHub Actions verification**: route tasks to a `codex-b` self-hosted runner; the Go agent verifies the exact source commit in an isolated worktree.
 - **Reliable receipts**: idempotent task publication, source-commit binding, receipt validation, command allowlisting, timeouts, and failure/blocked receipts.
-- **GitHub Actions support**: run target-environment verification on a `codex-b` self-hosted runner.
 
 ## Install from Codex
 
@@ -93,14 +92,14 @@ The complete user journey is documented in [USER_GUIDE.md](USER_GUIDE.md).
 
 ```text
 .codex-plugin/plugin.json       # Codex plugin manifest
-.mcp.json                       # plugin-local MCP server
+.mcp.json                       # source checkout MCP config (Go developer fallback)
 skills/                         # orchestrator and verifier Skills
 cmd/code-relay-agent/           # Go CLI and MCP entrypoint
 internal/relay/                 # Go protocol, runner, Git and MCP implementation
 schemas/                        # task and receipt JSON Schemas
 templates/                      # task and receipt Markdown templates
 .github/workflows/              # optional Target Host self-hosted workflow
-tests/                          # local MVP and end-to-end tests
+internal/relay/*_test.go        # unit, protocol, concurrency, and end-to-end tests
 ```
 
 ## Developer validation
@@ -133,15 +132,17 @@ To build a plugin bundle with the platform-specific MCP executable and `.mcp.jso
 ./scripts/package-plugin.ps1
 ```
 
+The source checkout `.mcp.json` uses `go run` so it works on every developer OS. A packaged plugin replaces it with a platform-native bundled binary and does not require Go at runtime.
+
 For a versioned release, run `./scripts/release.ps1` on Windows/PowerShell or `./scripts/build-agent.sh` on macOS/Linux; the release workflow produces five agent binaries, `release.json`, SBOM metadata, and `SHA256SUMS`.
 
-On a Target Host, install the self-hosted GitHub Actions runner with the `codex-b` label and place `code-relay-agent` in the repository's `bin/` directory. The workflow invokes `run-pending`; no Relay watcher or Python runtime is required.
+On a Target Host, install the self-hosted GitHub Actions runner with the `codex-b` label. The workflow builds the matching agent and invokes `run-pending`; no preinstalled Relay daemon or Python runtime is required.
 
 Run `code-relay-agent doctor --root .` to diagnose a host without changing project state.
 
 ## Security and operating boundaries
 
-Code Relay is an MVP. Validation commands run without a shell, are allowlisted, have bounded output and timeouts, and destructive command patterns are blocked. Users must still review task content and runner permissions.
+Code Relay is an MVP. Validation commands run without a shell, shell interpreters and inline eval modes are rejected, output and execution time are bounded, and destructive command patterns are blocked. Users must still review task content and runner permissions.
 
 Invitations are short-lived bearer links by default. Controlled deployments can set the same 32+ character `CODE_RELAY_INVITE_SECRET` on the Dev Host and Target Host to enable HMAC integrity checks. Per-user authorization and revocation still require a hosted control plane.
 
@@ -149,7 +150,7 @@ Read [SECURITY.md](SECURITY.md) before exposing a runner or webhook, [CONTRIBUTI
 
 ## Project status
 
-The current release is an MVP reference implementation. The protocol and directory layout are intentionally small so that a team can inspect, reuse, or replace individual runtime components.
+The current incompatible major release is Code Relay 2.0, a Go-only MVP reference implementation. The protocol and directory layout are intentionally small so that a team can inspect, reuse, or replace individual runtime components.
 
 ## License
 

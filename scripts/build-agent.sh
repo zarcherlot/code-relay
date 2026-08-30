@@ -17,4 +17,11 @@ for target in "${targets[@]}"; do
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "-s -w" -o "$output/$name" ./cmd/code-relay-agent
 done
 
-sha256sum "$output"/code-relay-agent-* > "$output/SHA256SUMS"
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum "$output"/code-relay-agent-* > "$output/SHA256SUMS"
+elif command -v shasum >/dev/null 2>&1; then
+  shasum -a 256 "$output"/code-relay-agent-* > "$output/SHA256SUMS"
+else
+  echo "sha256sum or shasum is required" >&2
+  exit 1
+fi

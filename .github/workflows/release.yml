@@ -7,13 +7,16 @@ on:
 permissions:
   contents: write
   id-token: write
+  attestations: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.22"
       - name: Build release artifacts
@@ -22,16 +25,23 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "invalid release tag: $VERSION" >&2
+            exit 1
+          fi
           version="${VERSION#v}"
           mkdir -p dist
           for target in "linux amd64 code-relay-agent-linux-amd64" "linux arm64 code-relay-agent-linux-arm64" "windows amd64 code-relay-agent-windows-amd64.exe" "darwin amd64 code-relay-agent-darwin-amd64" "darwin arm64 code-relay-agent-darwin-arm64"; do
             read -r goos goarch name <<<"$target"
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "-s -w -X main.version=$version" -o "dist/$name" ./cmd/code-relay-agent
           done
-          printf '{"product":"Code Relay","version":"%s","module":"github.com/zarcherlot/code-relay"}\n' "$version" > dist/release.json
+          test "$(./dist/code-relay-agent-linux-amd64 version)" = "code-relay-agent $version"
+          printf '{"product":"Code Relay","version":"%s","module":"github.com/zarcherlot/code-relay","source_commit":"%s","go_version":"%s"}\n' "$version" "$GITHUB_SHA" "$(go version)" > dist/release.json
+          printf '{"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"metadata":{"component":{"type":"application","name":"code-relay-agent","version":"%s"}},"components":[]}\n' "$version" > dist/sbom.cdx.json
           sha256sum dist/* > dist/SHA256SUMS
+          (cd dist && sha256sum -c SHA256SUMS)
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
           subject-path: "dist/*"
       - name: Create GitHub release
