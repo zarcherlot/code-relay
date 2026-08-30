@@ -1,6 +1,8 @@
 # Codex Relay
 
-> **Branding note:** the official icon is intentionally reserved at `assets/icon.svg` and will be replaced after design review. The current SVGs under `assets/` are exploratory drafts only.
+![Codex Relay Logo](assets/icon.png)
+
+The Codex Relay logo is the red wax-seal coding-agent mark in [`assets/icon.png`](assets/icon.png). The earlier SVG concepts remain in `assets/` as historical drafts and are not used by the product.
 
 Codex Relay is an open-source Codex plugin for a branch-scoped development and verification loop between two hosts:
 
