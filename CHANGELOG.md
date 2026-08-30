@@ -15,6 +15,7 @@ All notable changes to Code Relay are recorded here. The project is currently in
 - Removed shell interpreters and inline eval/exec escape modes from validation policy.
 - Added project-scoped queue/receipt locks, invalid-receipt recovery, explicit worktree failure receipts, and fail-closed one-time invitation consumption.
 - Hardened MCP JSON-RPC validation and recovery, pinned GitHub Actions by commit, and added checksums, SBOM metadata, provenance, and package smoke tests.
+- Raised the developer baseline to Go 1.26 and standardized CI/release builds on Go 1.27 for current macOS linker compatibility.
 
 ### Testing
 

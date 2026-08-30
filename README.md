@@ -104,7 +104,7 @@ internal/relay/*_test.go        # unit, protocol, concurrency, and end-to-end te
 
 ## Developer validation
 
-The repository is dependency-light and requires Go 1.22+:
+The repository is dependency-light and requires Go 1.26+. CI and release builds use the current stable Go 1.27 toolchain:
 
 ```powershell
 go test ./...
