@@ -1,11 +1,14 @@
 package relay
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -157,6 +160,48 @@ func TestInviteRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOneTimeInviteAllowsOnlyOneConcurrentJoin(t *testing.T) {
+	root := t.TempDir()
+	if out, err := exec.Command("git", "init", root).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v (%s)", err, out)
+	}
+	if out, err := exec.Command("git", "-C", root, "config", "remote.origin.url", "https://github.com/example/relay.git").CombinedOutput(); err != nil {
+		t.Fatalf("git remote: %v (%s)", err, out)
+	}
+	if out, err := exec.Command("git", "-C", root, "checkout", "-b", "main").CombinedOutput(); err != nil {
+		t.Fatalf("git branch: %v (%s)", err, out)
+	}
+	if _, err := BindProject(root, "orchestrator", "refs/heads/main"); err != nil {
+		t.Fatal(err)
+	}
+	invite, err := CreateInvite(root, 30, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const attempts = 8
+	results := make(chan error, attempts)
+	var group sync.WaitGroup
+	for i := 0; i < attempts; i++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			_, joinErr := JoinVerifier(root, invite["url"].(string))
+			results <- joinErr
+		}()
+	}
+	group.Wait()
+	close(results)
+	accepted := 0
+	for joinErr := range results {
+		if joinErr == nil {
+			accepted++
+		}
+	}
+	if accepted != 1 {
+		t.Fatalf("one-time invite accepted %d times", accepted)
+	}
+}
+
 func TestMCPToolsAndPublish(t *testing.T) {
 	root := t.TempDir()
 	markdown := testTask
@@ -169,6 +214,35 @@ func TestMCPToolsAndPublish(t *testing.T) {
 	}
 	if len(mcpTools()) < 9 {
 		t.Fatalf("expected MCP tools, got %d", len(mcpTools()))
+	}
+}
+
+func TestMCPStdioRoundTrip(t *testing.T) {
+	input := strings.NewReader("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n" +
+		"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{}}\n")
+	var output bytes.Buffer
+	if err := MCPStdio(input, &output); err != nil {
+		t.Fatal(err)
+	}
+	decoder := json.NewDecoder(&output)
+	var initialize map[string]any
+	if err := decoder.Decode(&initialize); err != nil {
+		t.Fatal(err)
+	}
+	if initialize["jsonrpc"] != "2.0" || initialize["id"].(float64) != 1 {
+		t.Fatalf("unexpected initialize response: %#v", initialize)
+	}
+	var listed map[string]any
+	if err := decoder.Decode(&listed); err != nil {
+		t.Fatal(err)
+	}
+	result, ok := listed["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected tools response: %#v", listed)
+	}
+	tools, ok := result["tools"].([]any)
+	if !ok || len(tools) < 9 {
+		t.Fatalf("expected MCP tools, got %#v", result["tools"])
 	}
 }
 

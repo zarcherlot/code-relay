@@ -1,3 +1,34 @@
 #!/usr/bin/env sh
 set -eu
-exec "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/../dist/code-relay-agent-linux-amd64" "$@"
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+agent=${CODE_RELAY_AGENT:-}
+if [ -z "$agent" ]; then
+  os=$(uname -s)
+  arch=$(uname -m)
+  case "$os" in
+    Linux) goos=linux ;;
+    Darwin) goos=darwin ;;
+    MINGW*|MSYS*|CYGWIN*) goos=windows ;;
+    *) printf '%s\n' "unsupported operating system: $os" >&2; exit 1 ;;
+  esac
+  case "$arch" in
+    x86_64|amd64) goarch=amd64 ;;
+    arm64|aarch64) goarch=arm64 ;;
+    *) printf '%s\n' "unsupported CPU architecture: $arch" >&2; exit 1 ;;
+  esac
+  suffix=
+  [ "$goos" = windows ] && suffix=.exe
+  for candidate in "$script_dir/../dist/code-relay-agent-$goos-$goarch$suffix" "$script_dir/code-relay-agent-$goos-$goarch$suffix"; do
+    if [ -x "$candidate" ]; then
+      agent=$candidate
+      break
+    fi
+  done
+fi
+
+if [ -z "$agent" ] || [ ! -x "$agent" ]; then
+  printf '%s\n' "code-relay-agent binary not found; build or install the matching platform artifact" >&2
+  exit 1
+fi
+exec "$agent" "$@"

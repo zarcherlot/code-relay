@@ -216,6 +216,13 @@ func JoinVerifier(root, invite string) (map[string]any, error) {
 		return nil, errors.New("当前工程分支不匹配")
 	}
 	config := map[string]any{"schema_version": 1, "verifier_id": "b-" + randomToken(4), "repository": payload["repository"], "ref": payload["ref"], "task_path": "tasks/**", "mode": "codex", "runtime": "go", "joined_at": now()}
+	// Serialize the consumed-invite read/check/write sequence so a one-time
+	// nonce cannot be accepted by two concurrent join requests.
+	inviteLock, lockErr := acquireTaskLock(root, "invite-consumption", 10*time.Second)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer inviteLock.release()
 	consumedPath := filepath.Join(root, newMeta, "consumed-invites.json")
 	var consumed []string
 	_ = readJSON(consumedPath, &consumed)

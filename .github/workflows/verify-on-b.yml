@@ -23,12 +23,32 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Select and build matching agent
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${RUNNER_OS}/${RUNNER_ARCH}" in
+            Linux/X64) goos=linux; goarch=amd64; name=code-relay-agent-linux-amd64 ;;
+            Linux/ARM64) goos=linux; goarch=arm64; name=code-relay-agent-linux-arm64 ;;
+            macOS/X64) goos=darwin; goarch=amd64; name=code-relay-agent-darwin-amd64 ;;
+            macOS/ARM64) goos=darwin; goarch=arm64; name=code-relay-agent-darwin-arm64 ;;
+            Windows/X64) goos=windows; goarch=amd64; name=code-relay-agent-windows-amd64.exe ;;
+            Windows/ARM64) goos=windows; goarch=arm64; name=code-relay-agent-windows-arm64.exe ;;
+            *) echo "unsupported runner: ${RUNNER_OS}/${RUNNER_ARCH}" >&2; exit 1 ;;
+          esac
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "-s -w" -o "dist/$name" ./cmd/code-relay-agent
+          chmod +x "dist/$name"
+          echo "CODE_RELAY_AGENT=$PWD/dist/$name" >> "$GITHUB_ENV"
       - name: Find and verify new tasks
         shell: bash
         run: |
           set -euo pipefail
-          test -x bin/code-relay-agent || chmod +x bin/code-relay-agent
-          ./bin/code-relay-agent run-pending --root . --timeout 1800
+          "$CODE_RELAY_AGENT" run-pending --root . --timeout 1800
       - name: Commit receipts
         shell: bash
         env:
@@ -39,4 +59,4 @@ jobs:
           git config user.email "code-relay-bot@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           trap 'git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"' EXIT
-          ./bin/code-relay-agent publish-receipts --root .
+          "$CODE_RELAY_AGENT" publish-receipts --root .
