@@ -16,6 +16,15 @@ from pathlib import Path
 from typing import Any
 
 from .protocol import ProtocolError
+from .naming import (
+    NEW_META_DIR,
+    PRODUCT_NAME,
+    canonical_join_uri,
+    is_join_uri,
+    legacy_meta_dir,
+    meta_dir,
+    secret_from_env,
+)
 
 _WATCHER_PROCS: dict[str, subprocess.Popen[Any]] = {}
 REF_RE = re.compile(r"^refs/heads/[A-Za-z0-9._/-]+$")
@@ -104,8 +113,10 @@ def bind_project(root: Path, role: str, ref: str | None = None) -> dict[str, Any
         "role": role,
         "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
-    target = root / ".codex-relay" / ("project.json" if role == "orchestrator" else "verifier.json")
+    target = meta_dir(root, create=True) / ("project.json" if role == "orchestrator" else "verifier.json")
     _write_json_private(target, config)
+    # Keep a legacy copy for checkouts and older runtimes during migration.
+    _write_json_private(legacy_meta_dir(root, create=True) / target.name, config)
     (root / "tasks").mkdir(exist_ok=True)
     (root / "receipts").mkdir(exist_ok=True)
     return config
@@ -131,34 +142,35 @@ def create_invite(root: Path, expires_minutes: int = 30) -> dict[str, Any]:
     root = root.resolve()
     if not 5 <= int(expires_minutes) <= 1440:
         raise ProtocolError("邀请有效期必须在 5 到 1440 分钟之间")
-    project = json.loads((root / ".codex-relay" / "project.json").read_text(encoding="utf-8"))
+    project = json.loads((meta_dir(root) / "project.json").read_text(encoding="utf-8"))
     if project.get("role") != "orchestrator" or not project.get("repository"):
-        raise ProtocolError("当前工程不是有效的 Codex Relay orchestrator 绑定")
+        raise ProtocolError(f"当前工程不是有效的 {PRODUCT_NAME} orchestrator 绑定")
     _validate_ref(project.get("ref"))
     nonce = secrets.token_urlsafe(18)
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
     payload = {"v": 1, "repository": project["repository"], "ref": project["ref"], "task_path": project.get("task_path", "tasks/**"), "mode": "codex", "nonce": nonce, "expires_at": expires_at.replace(microsecond=0).isoformat().replace("+00:00", "Z")}
-    secret = os.environ.get("CODEX_RELAY_INVITE_SECRET")
+    secret = secret_from_env()
     if secret:
         if len(secret) < 32:
-            raise ProtocolError("CODEX_RELAY_INVITE_SECRET 至少需要 32 个字符")
+            raise ProtocolError("CODE_RELAY_INVITE_SECRET 至少需要 32 个字符")
         payload["signature"] = _invite_signature(payload, secret)
     encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
-    url = "codex-relay://join/" + encoded
-    record = root / ".codex-relay" / "invitations" / f"{nonce}.json"
+    url = canonical_join_uri(encoded)
+    record = meta_dir(root, create=True) / "invitations" / f"{nonce}.json"
     _write_json_private(record, payload)
+    _write_json_private(legacy_meta_dir(root, create=True) / "invitations" / f"{nonce}.json", payload)
     return {"url": url, **payload}
 
 
 def decode_invite(value: str) -> dict[str, Any]:
-    if not isinstance(value, str) or len(value) > MAX_INVITE_LENGTH or not value.startswith("codex-relay://join/"):
-        raise ProtocolError("无效的 Codex Relay 加入链接")
+    if not isinstance(value, str) or len(value) > MAX_INVITE_LENGTH or not is_join_uri(value):
+        raise ProtocolError(f"无效的 {PRODUCT_NAME} 加入链接")
     token = value.rstrip("/").rsplit("/", 1)[-1]
     try:
         padded = token + "=" * (-len(token) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error, TypeError) as exc:
-        raise ProtocolError("无效的 Codex Relay 加入链接") from exc
+        raise ProtocolError(f"无效的 {PRODUCT_NAME} 加入链接") from exc
     if not isinstance(payload, dict) or payload.get("v") != 1 or payload.get("mode") != "codex" or not isinstance(payload.get("repository"), str) or not isinstance(payload.get("ref"), str) or not isinstance(payload.get("nonce"), str):
         raise ProtocolError("加入链接缺少必要绑定信息")
     _validate_ref(payload["ref"])
@@ -166,11 +178,11 @@ def decode_invite(value: str) -> dict[str, Any]:
         raise ProtocolError("加入链接包含不支持的绑定范围")
     if any(ord(char) < 32 or char.isspace() for char in payload["repository"]):
         raise ProtocolError("加入链接包含非法仓库地址")
-    secret = os.environ.get("CODEX_RELAY_INVITE_SECRET")
+    secret = secret_from_env()
     signature = payload.get("signature")
     if signature:
         if not secret or len(secret) < 32 or not isinstance(signature, str):
-            raise ProtocolError("该邀请需要配置 CODEX_RELAY_INVITE_SECRET 才能验证")
+            raise ProtocolError("该邀请需要配置 CODE_RELAY_INVITE_SECRET 才能验证")
         unsigned = {key: value for key, value in payload.items() if key != "signature"}
         if not hmac.compare_digest(signature, _invite_signature(unsigned, secret)):
             raise ProtocolError("加入链接签名校验失败")
@@ -185,7 +197,7 @@ def decode_invite(value: str) -> dict[str, Any]:
     return payload
 
 
-def join_verifier(root: Path, invite: str) -> dict[str, Any]:
+def join_verifier(root: Path, invite: str, runtime: str | None = None) -> dict[str, Any]:
     root = root.resolve()
     payload = decode_invite(invite)
     actual = canonical_repo(root)
@@ -194,10 +206,13 @@ def join_verifier(root: Path, invite: str) -> dict[str, Any]:
     actual_ref = current_ref(root)
     if actual_ref != payload["ref"]:
         raise ProtocolError(f"当前工程分支不匹配：{actual_ref} != {payload['ref']}（请切换分支或选择克隆目标目录）")
-    config = {"schema_version": 1, "verifier_id": "b-" + secrets.token_hex(4), **{key: payload[key] for key in ("repository", "ref", "task_path", "mode")}, "joined_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")}
-    target = root / ".codex-relay" / "verifier.json"
+    if runtime not in {None, "python", "go"}:
+        raise ProtocolError("runtime 必须是 python 或 go")
+    config = {"schema_version": 1, "verifier_id": "b-" + secrets.token_hex(4), **{key: payload[key] for key in ("repository", "ref", "task_path", "mode")}, "runtime": runtime or os.environ.get("CODE_RELAY_RUNTIME", "python"), "joined_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")}
+    target = meta_dir(root, create=True) / "verifier.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _write_json_private(legacy_meta_dir(root, create=True) / "verifier.json", config)
     (root / "tasks").mkdir(exist_ok=True)
     (root / "receipts").mkdir(exist_ok=True)
     return config
@@ -212,7 +227,7 @@ def _pid_alive(pid: int) -> bool:
 
 
 def watcher_status(root: Path) -> dict[str, Any]:
-    state_path = root.resolve() / ".codex-relay" / "watcher.json"
+    state_path = meta_dir(root) / "watcher.json"
     if not state_path.exists():
         return {"status": "stopped"}
     try:
@@ -236,15 +251,24 @@ def start_watcher(root: Path, interval: float = 5.0) -> dict[str, Any]:
         return current
     if not 1 <= float(interval) <= 3600:
         raise ProtocolError("watcher 轮询间隔必须在 1 到 3600 秒之间")
-    meta = root / ".codex-relay"
+    meta = meta_dir(root, create=True)
     meta.mkdir(parents=True, exist_ok=True)
     log = (meta / "watcher.log").open("a", encoding="utf-8")
     launcher = Path(__file__).resolve().parents[1] / "daemon" / "relay-daemon"
-    command = [sys.executable, str(launcher), "--root", str(root), "--role", "verifier", "--poll-interval", str(interval)] if launcher.exists() else [sys.executable, "-m", "codex_relay.daemon", "--root", str(root), "--role", "verifier", "--poll-interval", str(interval)]
     config_path = meta / "verifier.json"
     if not config_path.exists():
         log.close()
-        raise ProtocolError("当前工程尚未加入 Codex Relay verifier")
+        raise ProtocolError(f"当前工程尚未加入 {PRODUCT_NAME} verifier")
+    runtime = None
+    try:
+        runtime = json.loads(config_path.read_text(encoding="utf-8")).get("runtime")
+    except (OSError, json.JSONDecodeError):
+        pass
+    from .agent import find_agent
+    if runtime == "go" and find_agent():
+        command = [find_agent(), "watcher", "--poll-interval", str(interval), "--root", str(root)]
+    else:
+        command = [sys.executable, str(launcher), "--root", str(root), "--role", "verifier", "--poll-interval", str(interval)] if launcher.exists() else [sys.executable, "-m", "code_relay.daemon", "--root", str(root), "--role", "verifier", "--poll-interval", str(interval)]
     if config_path.exists():
         try:
             agent_command = json.loads(config_path.read_text(encoding="utf-8")).get("agent_command")
@@ -295,7 +319,8 @@ def stop_watcher(root: Path) -> dict[str, Any]:
             except subprocess.TimeoutExpired:
                 pass
     state["status"] = "stopped"
-    _write_json_private(root / ".codex-relay" / "watcher.json", state)
+    _write_json_private(meta_dir(root, create=True) / "watcher.json", state)
+    _write_json_private(legacy_meta_dir(root, create=True) / "watcher.json", state)
     return state
 
 
@@ -303,7 +328,7 @@ def _is_empty(path: Path) -> bool:
     return not path.exists() or not any(path.iterdir())
 
 
-def clone_and_join(root: Path, invite: str, destination: str | None = None) -> dict[str, Any]:
+def clone_and_join(root: Path, invite: str, destination: str | None = None, runtime: str | None = None) -> dict[str, Any]:
     """Clone the invited branch when the current Codex window has no repository."""
     payload = decode_invite(invite)
     target = Path(destination).expanduser().resolve() if destination else root.resolve()
@@ -320,7 +345,7 @@ def clone_and_join(root: Path, invite: str, destination: str | None = None) -> d
     # the branch-scoped integration assets (schemas, templates and workflow).
     # Copy only missing files before writing the final verifier binding.
     provision_project(target, "verifier", payload["ref"])
-    config = join_verifier(target, invite)
+    config = join_verifier(target, invite, runtime)
     config["workspace"] = str(target)
-    (target / ".codex-relay" / "verifier.json").write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    meta_dir(target, create=True).joinpath("verifier.json").write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return config

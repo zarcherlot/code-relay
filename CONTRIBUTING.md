@@ -1,6 +1,6 @@
-# Contributing to Codex Relay
+# Contributing to Code Relay
 
-Thanks for helping improve Codex Relay. The project is intentionally small: changes should preserve the branch-scoped protocol and keep the Codex conversation as the primary user interface.
+Thanks for helping improve Code Relay. The project is intentionally small: changes should preserve the branch-scoped protocol and keep the Codex conversation as the primary user interface.
 
 ## Before opening a change
 
@@ -15,7 +15,7 @@ Run the complete test and compile checks from the repository root:
 
 ```powershell
 python -m unittest discover -s tests -v
-python -m compileall -q codex_mate codex_relay tests scripts
+python -m compileall -q codex_mate code_relay codex_relay tests scripts
 ```
 
 When changing `.codex-plugin/plugin.json`, `.mcp.json`, or a Skill, also verify JSON and frontmatter before submitting.

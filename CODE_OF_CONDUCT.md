@@ -2,7 +2,7 @@
 
 ## Our standard
 
-We want Codex Relay to be a welcoming, technically rigorous project. Participants are expected to:
+We want Code Relay to be a welcoming, technically rigorous project. Participants are expected to:
 
 - be respectful and constructive;
 - assume good intent while discussing design trade-offs;

@@ -1,6 +1,6 @@
-# Codex Relay 用户使用指南
+# Code Relay 用户使用指南
 
-Codex Relay 适合这样的工作方式：你只在 A 主机的 Codex 中描述需求，A 负责开发和发布任务，B 主机负责在目标环境验证，最后把结构化回执交回 A。
+Code Relay 适合这样的工作方式：你只在 A 主机的 Codex 中描述需求，A 负责开发和发布任务，B 主机负责在目标环境验证，最后把结构化回执交回 A。
 
 ## 1. 你会看到什么
 
@@ -22,20 +22,20 @@ receipts/<task_id>/receipt.md        # B 给人和 Codex 阅读的结果
 
 ## 2. 一次性准备
 
-普通用户只需从 Codex 插件入口安装 **Codex Relay**。不需要手动执行 `pip install`、`conda install` 或 `relay install`；这些属于插件内部的 runtime 配置动作。
+普通用户只需从 Codex 插件入口安装 **Code Relay**。不需要手动执行 `pip install`、`conda install` 或 `relay install`；这些属于插件内部的 runtime 配置动作。
 
 ### A 主机（编排端）
 
-安装插件后，在目标工程目录的 Codex 中说：“为当前工程当前分支启用 Codex Relay”。插件会读取 Git remote 和当前分支，生成项目配置、workflow、任务/回执目录，提交并推送。
+安装插件后，在目标工程目录的 Codex 中说：“为当前工程当前分支启用 Code Relay”。插件会读取 Git remote 和当前分支，生成项目配置、workflow、任务/回执目录，提交并推送。
 
 ### B 主机（验证端）
 
-B 用户安装同一个 Codex Relay 插件，把 A 生成的加入链接粘贴到该工程的 Codex 中，并确认仓库、分支和权限。插件会生成 verifier 配置并启动 watcher。准备同一个 GitHub 仓库的 self-hosted runner，并添加标签 `codex-b`；runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
+B 用户安装同一个 Code Relay 插件，把 A 生成的加入链接粘贴到该工程的 Codex 中，并确认仓库、分支和权限。插件会生成 verifier 配置并启动 watcher。准备同一个 GitHub 仓库的 self-hosted runner，并添加标签 `codex-b`；runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
 
 如果暂时没有 GitHub runner，开发者可以在 B 的工作目录用内部调试命令启动 watcher（普通用户无需执行）：
 
 ```powershell
-python -m codex_relay.daemon --root . --role verifier
+python -m code_relay.daemon --root . --role verifier
 ```
 
 生产环境建议使用 workflow，因为它会根据任务里的 `source_commit` 创建隔离 worktree，避免验证到错误版本。
@@ -52,7 +52,7 @@ python -m codex_relay.daemon --root . --role verifier
 
 ### 第二步：自动发布任务
 
-不需要手工编辑 task.md。A 的 Codex Relay Skill 会根据当前对话、合入后的 commit SHA、验证命令和预期结果自动生成任务，分配 task ID，提交并推送到已绑定的远端分支。
+不需要手工编辑 task.md。A 的 Code Relay Skill 会根据当前对话、合入后的 commit SHA、验证命令和预期结果自动生成任务，分配 task ID，提交并推送到已绑定的远端分支。
 
 你只需要说：
 
@@ -128,8 +128,8 @@ receipts/<task_id>/receipt.md
 ## 7. 安全建议
 
 - B runner 使用独立、低权限账号和独立 worktree。
-- 在 A、B 主机安全配置相同的 `CODEX_RELAY_INVITE_SECRET`（至少 32 个字符），让邀请链接启用 HMAC 完整性校验；不要把该值写进 Git、task、receipt 或聊天记录。
+- 在 A、B 主机安全配置相同的 `CODE_RELAY_INVITE_SECRET`（至少 32 个字符），让邀请链接启用 HMAC 完整性校验；旧项目仍可使用 `CODEX_RELAY_INVITE_SECRET`；不要把该值写进 Git、task、receipt 或聊天记录。
 - GitHub Token 只授予仓库内容读写和 Actions 所需的最小权限。
 - 不要把 Token、密码或其他密钥写入 task、receipt 或日志。
 - 不要把未经审查的任意 shell 脚本放入 Validation Plan。
-- 生产环境保留 `.codex-relay/events.jsonl` 和 Git 历史，便于审计与故障恢复。
+- 生产环境保留 `.code-relay/events.jsonl` 和 Git 历史，便于审计与故障恢复。

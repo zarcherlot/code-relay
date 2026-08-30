@@ -1,24 +1,24 @@
 {
-  "name": "codex-relay",
-  "version": "0.3.0",
-  "description": "Branch-scoped orchestration and verification for Codex projects.",
+  "name": "code-relay",
+  "version": "0.4.0",
+  "description": "Branch-scoped orchestration and verification for Code Relay projects.",
   "author": {
-    "name": "Codex Relay"
+    "name": "Code Relay"
   },
   "license": "MIT",
   "keywords": ["codex", "verification", "github", "workflow"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Codex Relay",
+    "displayName": "Code Relay",
     "shortDescription": "Connect a Codex project to a remote verification branch.",
-    "longDescription": "Codex Relay binds the current project and branch, lets A orchestrate development, and lets B Codex verify pushed tasks and publish receipts.",
-    "developerName": "Codex Relay",
+    "longDescription": "Code Relay binds the current project and branch, lets A orchestrate development, and lets B Codex verify pushed tasks and publish receipts.",
+    "developerName": "Code Relay",
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Write"],
     "defaultPrompt": [
-      "Bind this project to Codex Relay",
-      "Join this project as a verifier",
+      "Bind this project to Code Relay",
+      "Join this project as a Code Relay verifier",
       "Show verifier status and latest receipts"
     ],
     "brandColor": "#2563EB"

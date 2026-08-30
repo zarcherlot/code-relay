@@ -3,16 +3,18 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "codex-relay"
-version = "0.3.0"
+name = "code-relay"
+version = "0.4.0"
 description = "Git-backed two-host Codex development and verification loop"
 requires-python = ">=3.10"
 
 [project.scripts]
-codex-relay = "codex_relay.relay:main"
+code-relay = "code_relay.relay:main"
+codex-relay = "code_relay.relay:main"
 relay = "codex_relay.relay:main"
-codex-relay-daemon = "codex_relay.daemon:main"
-relay-daemon = "codex_relay.daemon:main"
+code-relay-daemon = "code_relay.daemon:main"
+codex-relay-daemon = "code_relay.daemon:main"
+relay-daemon = "code_relay.daemon:main"
 
 [tool.setuptools.packages.find]
-include = ["codex_mate*", "codex_relay*"]
+include = ["codex_mate*", "codex_relay*", "code_relay*"]

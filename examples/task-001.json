@@ -2,7 +2,7 @@
   "task_id": "task-001",
   "source_commit": "0000000",
   "target": "B",
-  "objective": "验证 Codex Relay MVP 的最小闭环",
+  "objective": "验证 Code Relay MVP 的最小闭环",
   "validation_plan": ["python -c \"print('mvp smoke ok')\""],
   "expected_results": ["命令退出码为 0", "输出包含 mvp smoke ok"]
 }

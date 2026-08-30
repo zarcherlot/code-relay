@@ -3,5 +3,12 @@ __pycache__/
 .codex-relay/*
 !.codex-relay/
 !.codex-relay/project.json
+.code-relay/*
+!.code-relay/
+!.code-relay/project.json
+!.code-relay/verifier.json
 .codex-mate/
+dist/
+.gocache/
+.gomodcache/
 .pytest_cache/

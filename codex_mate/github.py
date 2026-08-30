@@ -34,7 +34,7 @@ def remote_status(root: Path) -> dict[str, Any] | None:
         return None
 
     def get(path: str) -> Any:
-        request = urllib.request.Request("https://api.github.com" + path, headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "User-Agent": "codex-relay"})
+        request = urllib.request.Request("https://api.github.com" + path, headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "User-Agent": "code-relay"})
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.load(response)
 

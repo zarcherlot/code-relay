@@ -1,0 +1,12 @@
+# Code Relay host configuration. The plugin/MCP tools remain the normal entry point.
+
+role: orchestrator
+runtime: go
+poll_interval_seconds: 5
+repository_root: .
+
+# B host uses:
+# role: verifier
+# runtime: go
+# Set CODE_RELAY_INVITE_SECRET on both A and B when signed invitation integrity
+# is required (32+ characters). CODEX_RELAY_INVITE_SECRET remains a fallback.

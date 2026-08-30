@@ -1,8 +1,8 @@
-# Codex Relay MVP：产品与技术方案
+# Code Relay MVP：产品与技术方案
 
 ## 1. 一句话定义
 
-Codex Relay 是一个以 Codex 对话为唯一工作界面的双机协作插件：A 主机负责开发和编排，B 主机负责目标环境验证；GitHub 负责代码、任务、状态和回执的中转。
+Code Relay 是一个以 Codex 对话为唯一工作界面的双机协作插件：A 主机负责开发和编排，B 主机负责目标环境验证；GitHub 负责代码、任务、状态和回执的中转。
 
 ## 2. MVP 用户体验
 
@@ -42,7 +42,7 @@ B Codex 自动完成：
 MVP 不做独立 Web 控制台，形态只有一个 Codex Plugin（CLI/daemon 是插件的内部 runtime）：
 
 ```text
-Codex Relay Plugin
+Code Relay Plugin
 ├── orchestrator Skill      # A 的绑定、发布、监听、分析规则
 ├── verifier Skill          # B 的加入、验证、回执规则
 ├── MCP tools                # bind / invite / join / watcher lifecycle
@@ -64,7 +64,7 @@ role: verifier
 ```text
 用户
   ↓ Codex 对话
- A Codex + Codex Relay Plugin
+ A Codex + Code Relay Plugin
   ├─ 本地开发/测试
   ├─ PR、CI、合入
   ├─ 生成 task.md
@@ -75,7 +75,7 @@ role: verifier
       ├── receipts/task-xxx/receipt.json
       └── receipts/task-xxx/receipt.md
           ↓ GitHub push / Actions
- B Codex Relay Plugin + watcher + Codex
+ B Code Relay Plugin + watcher + Codex
   ├─ 发现任务
   ├─ 执行验证
   └─ 推送回执
@@ -85,7 +85,7 @@ MVP 使用 GitHub Actions self-hosted runner 触发 B，B 不需要公网入站 
 
 ### 4.1 工程/分支绑定
 
-一次 Relay 绑定由 `repository + refs/heads/<branch>` 唯一确定。A 在工程目录的 Codex 中请求“绑定当前工程当前分支”后，插件读取 Git remote 和当前分支，写入 `.codex-relay/project.json`，提交并推送集成文件，并立即生成短时效 B 加入链接。B 粘贴链接后，插件先展示仓库、分支和权限；若当前 Codex 窗口没有仓库，确认后自动克隆该分支到空目录并关联，随后启动 watcher。若已有不同仓库/分支，原目录保持不变。
+一次 Code Relay 绑定由 `repository + refs/heads/<branch>` 唯一确定。A 在工程目录的 Codex 中请求“绑定当前工程当前分支”后，插件读取 Git remote 和当前分支，写入 `.code-relay/project.json`，提交并推送集成文件，并立即生成短时效 B 加入链接。B 粘贴链接后，插件先展示仓库、分支和权限；若当前 Codex 窗口没有仓库，确认后自动克隆该分支到空目录并关联，随后启动 watcher。若已有不同仓库/分支，原目录保持不变。
 
 ## 5. GitHub 数据约定
 

@@ -2,11 +2,11 @@
 
 ## Scope
 
-Codex Relay moves source references, task instructions, validation commands, and receipts through Git. It can also start a local watcher and execute commands on a verifier host. Treat every task and invitation as untrusted input until it has been reviewed.
+Code Relay moves source references, task instructions, validation commands, and receipts through Git. It can also start a local watcher and execute commands on a verifier host. Treat every task and invitation as untrusted input until it has been reviewed.
 
 ## Current MVP boundaries
 
-- Invitations are short-lived bearer links by default. Set `CODEX_RELAY_INVITE_SECRET` to the same 32+ character secret on A and B to add HMAC integrity verification; anyone who obtains an unexpired unsigned link can otherwise attempt to join the encoded repository/ref. Do not paste invitations or secrets into public issues or logs.
+- Invitations are short-lived bearer links by default. Set `CODE_RELAY_INVITE_SECRET` to the same 32+ character secret on A and B to add HMAC integrity verification; the legacy `CODEX_RELAY_INVITE_SECRET` remains accepted during migration. Anyone who obtains an unexpired unsigned link can otherwise attempt to join the encoded repository/ref. Do not paste invitations or secrets into public issues or logs.
 - The verifier runtime allowlists common development executables and blocks several destructive command patterns, but this is defense-in-depth rather than a sandbox.
 - Use a dedicated low-privilege self-hosted runner and a separate worktree for validation.
 - Give GitHub tokens only the minimum contents/actions permissions required to fetch tasks and publish receipts.

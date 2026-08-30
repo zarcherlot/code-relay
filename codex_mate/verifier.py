@@ -62,7 +62,7 @@ def _parse_command(command: str) -> tuple[list[str] | None, str | None]:
 
 def _run_command(argv: list[str], cwd: Path, timeout: int) -> tuple[int | None, str, bool]:
     env = os.environ.copy()
-    for key in ("GITHUB_TOKEN", "GH_TOKEN", "CODEX_RELAY_INVITE_SECRET", "CODEX_API_KEY", "OPENAI_API_KEY"):
+    for key in ("GITHUB_TOKEN", "GH_TOKEN", "CODE_RELAY_INVITE_SECRET", "CODEX_RELAY_INVITE_SECRET", "CODEX_API_KEY", "OPENAI_API_KEY"):
         env.pop(key, None)
     kwargs: dict[str, Any] = {
         "cwd": str(cwd),
@@ -104,7 +104,7 @@ def run_task(task: Task, root: Path, timeout: int = 600, worktree: str | None = 
             "source_commit": task.source_commit,
             "status": "blocked",
             "checks": [{"name": "任务协议", "expected": "task.md 通过协议校验", "actual": str(exc), "status": "blocked"}],
-            "risks": ["任务字段不符合 Codex Relay 协议"],
+            "risks": ["任务字段不符合 Code Relay 协议"],
             "next_actions": ["修正 task.md 后重新发布"],
             "verified_at": utc_now(),
             "environment": {"platform": platform.platform(), "python": platform.python_version()},

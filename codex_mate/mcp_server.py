@@ -1,4 +1,4 @@
-"""Minimal stdio MCP bridge used by the Codex Relay plugin.
+"""Minimal stdio MCP bridge used by the Code Relay plugin.
 
 The bridge intentionally exposes bounded project operations; the long-running
 watcher remains a host service managed by the plugin/runtime.
@@ -13,11 +13,11 @@ from typing import Any
 from .binding import clone_and_join, create_invite, join_verifier, provision_project, start_watcher, stop_watcher, watcher_status
 
 TOOLS = [
-    {"name": "bind_project", "description": "Bind the current project and branch to Codex Relay and create the verifier invite for an orchestrator.", "inputSchema": {"type": "object", "properties": {"root": {"type": "string"}, "role": {"enum": ["orchestrator", "verifier"]}, "ref": {"type": "string"}, "expires": {"type": "integer", "minimum": 5, "maximum": 1440}}, "required": ["role"]}},
+    {"name": "bind_project", "description": "Bind the current project and branch to Code Relay and create the verifier invite for an orchestrator.", "inputSchema": {"type": "object", "properties": {"root": {"type": "string"}, "role": {"enum": ["orchestrator", "verifier"]}, "ref": {"type": "string"}, "expires": {"type": "integer", "minimum": 5, "maximum": 1440}}, "required": ["role"]}},
     {"name": "create_verifier_invite", "description": "Create a short-lived verifier join link for the bound project.", "inputSchema": {"type": "object", "properties": {"root": {"type": "string"}, "expires": {"type": "integer", "minimum": 5, "maximum": 1440}}, "required": []}},
-    {"name": "join_verifier", "description": "Join a branch-scoped Codex Relay verifier subscription using a join link and start its watcher.", "inputSchema": {"type": "object", "properties": {"root": {"type": "string"}, "url": {"type": "string"}, "destination": {"type": "string"}, "poll_interval": {"type": "number", "minimum": 1}}, "required": ["url"]}},
-    {"name": "watcher_status", "description": "Show the Codex Relay verifier watcher status.", "inputSchema": {"type": "object", "properties": {"root": {"type": "string"}}, "required": []}},
-    {"name": "stop_watcher", "description": "Stop the local Codex Relay verifier watcher after user confirmation.", "inputSchema": {"type": "object", "properties": {"root": {"type": "string"}}, "required": []}},
+    {"name": "join_verifier", "description": "Join a branch-scoped Code Relay verifier subscription using a join link and start its watcher.", "inputSchema": {"type": "object", "properties": {"root": {"type": "string"}, "url": {"type": "string"}, "destination": {"type": "string"}, "poll_interval": {"type": "number", "minimum": 1}, "runtime": {"enum": ["python", "go"]}}, "required": ["url"]}},
+    {"name": "watcher_status", "description": "Show the Code Relay verifier watcher status.", "inputSchema": {"type": "object", "properties": {"root": {"type": "string"}}, "required": []}},
+    {"name": "stop_watcher", "description": "Stop the local Code Relay verifier watcher after user confirmation.", "inputSchema": {"type": "object", "properties": {"root": {"type": "string"}}, "required": []}},
 ]
 
 
@@ -30,7 +30,7 @@ def handle(request: dict[str, Any]) -> dict[str, Any] | None:
     if method == "notifications/initialized":
         return None
     if method == "initialize":
-        return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "codex-relay", "version": "0.3.0"}}}
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "code-relay", "version": "0.4.0"}}}
     if method == "ping":
         return {"jsonrpc": "2.0", "id": request_id, "result": {}}
     if method == "tools/list":
@@ -51,9 +51,9 @@ def handle(request: dict[str, Any]) -> dict[str, Any] | None:
                 # proposed clone target (or uses the explicit destination).
                 # The skill asks for confirmation before invoking this action.
                 if args.get("destination") or not (root / ".git").exists():
-                    value = clone_and_join(root, args["url"], args.get("destination"))
+                    value = clone_and_join(root, args["url"], args.get("destination"), args.get("runtime"))
                 else:
-                    value = join_verifier(root, args["url"])
+                    value = join_verifier(root, args["url"], args.get("runtime"))
                 value["watcher"] = start_watcher(Path(value.get("workspace", root)), float(args.get("poll_interval", 5)))
             elif name == "watcher_status":
                 value = watcher_status(root)

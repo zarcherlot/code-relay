@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .protocol import ProtocolError, Task, atomic_write_text, dump_json, load_receipt, render_receipt_markdown, utc_now
+from .naming import PRODUCT_NAME
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -17,7 +18,7 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _repo_root(value: str | None) -> Path:
-    root = Path(value or os.environ.get("CODEX_RELAY_ROOT") or os.environ.get("CODEX_MATE_ROOT", ".")).resolve()
+    root = Path(value or os.environ.get("CODE_RELAY_ROOT") or os.environ.get("CODEX_RELAY_ROOT") or os.environ.get("CODEX_MATE_ROOT", ".")).resolve()
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -64,7 +65,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
     if not args.no_git:
         result = _git(root, "add", str(destination.relative_to(root)))
         if result.returncode == 0:
-            message = f"codex-relay: publish {task.task_id}"
+            message = f"code-relay: publish {task.task_id}"
             commit = _git(root, "commit", "-m", message)
             if commit.returncode == 0:
                 push = _git(root, "push")
@@ -156,7 +157,14 @@ def cmd_init(args: argparse.Namespace) -> int:
     root = _repo_root(args.root)
     for path in (root / "tasks", root / "receipts"):
         path.mkdir(parents=True, exist_ok=True)
-    print(f"已初始化 Codex Relay 目录: {root}")
+    print(f"已初始化 {PRODUCT_NAME} 目录: {root}")
+    return 0
+
+
+def cmd_migrate(args: argparse.Namespace) -> int:
+    from .migration import migrate_project
+
+    print(json.dumps(migrate_project(_repo_root(args.root)), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -207,11 +215,13 @@ def cmd_run_task(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="codex-relay", description="Codex Relay Git-backed relay")
+    parser = argparse.ArgumentParser(prog="code-relay", description="Code Relay Git-backed relay")
     parser.add_argument("--root", help="仓库根目录，默认当前目录")
     sub = parser.add_subparsers(dest="command", required=True)
     init = sub.add_parser("init", help="创建 tasks/receipts 目录")
     init.set_defaults(func=cmd_init)
+    migrate = sub.add_parser("migrate", help="将旧 codex-relay 元数据迁移到 Code Relay")
+    migrate.set_defaults(func=cmd_migrate)
     bind = sub.add_parser("project-bind", help="插件内部：绑定当前工程与远端分支")
     bind.add_argument("--role", choices=("orchestrator", "verifier"), required=True)
     bind.add_argument("--ref")

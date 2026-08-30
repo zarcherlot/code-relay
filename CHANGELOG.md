@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Codex Relay are recorded here. The project is currently in the MVP stage.
+All notable changes to Code Relay are recorded here. The project is currently in the MVP stage.
 
 ## [0.3.0] - 2026-08-30
 
@@ -31,7 +31,7 @@ All notable changes to Codex Relay are recorded here. The project is currently i
 ### Changed
 
 - User-facing installation is plugin-first; the CLI remains a developer/CI fallback.
-- Product and runtime naming is unified as Codex Relay.
+- Product and runtime naming is unified as Code Relay; legacy codex-relay aliases remain supported.
 
 ### Known limitations
 
