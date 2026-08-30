@@ -30,7 +30,7 @@ def handle(request: dict[str, Any]) -> dict[str, Any] | None:
     if method == "notifications/initialized":
         return None
     if method == "initialize":
-        return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "codex-relay", "version": "0.2.0"}}}
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "serverInfo": {"name": "codex-relay", "version": "0.3.0"}}}
     if method == "ping":
         return {"jsonrpc": "2.0", "id": request_id, "result": {}}
     if method == "tools/list":

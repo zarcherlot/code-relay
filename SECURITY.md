@@ -6,7 +6,7 @@ Codex Relay moves source references, task instructions, validation commands, and
 
 ## Current MVP boundaries
 
-- Invitations are short-lived bearer links. Anyone who obtains an unexpired link can attempt to join the encoded repository/ref; do not paste them into public issues or logs.
+- Invitations are short-lived bearer links by default. Set `CODEX_RELAY_INVITE_SECRET` to the same 32+ character secret on A and B to add HMAC integrity verification; anyone who obtains an unexpired unsigned link can otherwise attempt to join the encoded repository/ref. Do not paste invitations or secrets into public issues or logs.
 - The verifier runtime allowlists common development executables and blocks several destructive command patterns, but this is defense-in-depth rather than a sandbox.
 - Use a dedicated low-privilege self-hosted runner and a separate worktree for validation.
 - Give GitHub tokens only the minimum contents/actions permissions required to fetch tasks and publish receipts.
@@ -25,4 +25,4 @@ Until a private security contact is configured for the project, use the reposito
 
 ## Future hardening
 
-Before production use, the project should add signed invitations, invitation revocation, per-project authorization, stronger process isolation, artifact size limits, and an auditable event store.
+Before production use, the project should add asymmetric signed invitations or a hosted authorization service, invitation revocation, per-project authorization, stronger process isolation, and an auditable event store. The optional HMAC mode is an integrity layer for controlled deployments, not a replacement for per-user authorization.

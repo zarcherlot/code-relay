@@ -4,12 +4,19 @@ import argparse
 import hashlib
 import hmac
 import json
+import re
 import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+from .protocol import MAX_TASK_BYTES, TASK_ID_RE, dump_json
+
+MAX_EVENT_BYTES = 1024 * 1024
+MAX_QUEUE_BYTES = 50 * 1024 * 1024
+MAX_DELIVERIES = 10000
 
 
 class RelayDaemon:
@@ -18,19 +25,40 @@ class RelayDaemon:
         self.meta = self.root / ".codex-relay"
         self.state_path, self.queue_path = self.meta / "state.json", self.meta / "events.jsonl"
         self.meta.mkdir(parents=True, exist_ok=True)
-        self.state: dict[str, str] = json.loads(self.state_path.read_text(encoding="utf-8")) if self.state_path.exists() else {}
+        self.state: dict[str, str] = {}
+        if self.state_path.exists():
+            try:
+                loaded = json.loads(self.state_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    self.state = {str(key): str(value) for key, value in loaded.items() if len(str(key)) <= 1024 and len(str(value)) <= 128}
+            except (OSError, json.JSONDecodeError):
+                self.state = {}
         self.deliveries_path = self.meta / "deliveries.json"
-        self.deliveries: set[str] = set(json.loads(self.deliveries_path.read_text(encoding="utf-8"))) if self.deliveries_path.exists() else set()
+        self.deliveries: set[str] = set()
+        if self.deliveries_path.exists():
+            try:
+                loaded = json.loads(self.deliveries_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    self.deliveries = {str(item) for item in loaded if len(str(item)) <= 256}
+            except (OSError, json.JSONDecodeError):
+                self.deliveries = set()
         self.verifier_config = self.meta / "verifier.json"
 
     def enqueue(self, event: dict[str, Any], delivery: str | None = None) -> bool:
         """Append an event once; GitHub delivery IDs make webhook retries idempotent."""
+        if not isinstance(event, dict) or len(json.dumps(event, ensure_ascii=False)) > MAX_EVENT_BYTES:
+            return False
+        if delivery and len(delivery) > 256:
+            return False
         if delivery and delivery in self.deliveries:
             return False
         if delivery:
             self.deliveries.add(delivery)
-            self.deliveries_path.write_text(json.dumps(sorted(self.deliveries), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            self.deliveries = set(sorted(self.deliveries)[-MAX_DELIVERIES:])
+            dump_json(sorted(self.deliveries), self.deliveries_path)
         self.queue_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.queue_path.exists() and self.queue_path.stat().st_size >= MAX_QUEUE_BYTES:
+            return False
         with self.queue_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event, ensure_ascii=False) + "\n")
         return True
@@ -52,6 +80,8 @@ class RelayDaemon:
         try:
             config = json.loads(self.verifier_config.read_text(encoding="utf-8"))
             ref = config["ref"]
+            if not isinstance(ref, str) or not re.fullmatch(r"refs/heads/[A-Za-z0-9._/-]+", ref) or ".." in ref or "//" in ref:
+                return
             fetched = subprocess.run(["git", "fetch", "--quiet", "origin", ref], cwd=self.root, text=True, capture_output=True, check=False)
             if fetched.returncode:
                 return
@@ -59,10 +89,11 @@ class RelayDaemon:
             if tree.returncode:
                 return
             for relative in (line.strip() for line in tree.stdout.splitlines()):
-                if not relative.endswith("/task.md"):
+                parts = relative.split("/")
+                if len(parts) != 3 or parts[0] != "tasks" or parts[2] != "task.md" or not TASK_ID_RE.fullmatch(parts[1]):
                     continue
                 shown = subprocess.run(["git", "show", f"FETCH_HEAD:{relative}"], cwd=self.root, capture_output=True, check=False)
-                if shown.returncode:
+                if shown.returncode or len(shown.stdout) > MAX_TASK_BYTES:
                     continue
                 content = shown.stdout
                 destination = self.meta / "inbox" / relative
@@ -88,7 +119,7 @@ class RelayDaemon:
             self.enqueue(event)
             if self.on_event:
                 subprocess.Popen(self.on_event, shell=True, cwd=self.root)
-        self.state_path.write_text(json.dumps(self.state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        dump_json(self.state, self.state_path)
         return events
 
     def run(self, once: bool = False) -> None:
@@ -103,7 +134,12 @@ class RelayDaemon:
 def webhook_server(root: Path, secret: str | None, port: int, daemon: RelayDaemon) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):  # noqa: N802
-            length = int(self.headers.get("Content-Length", "0"))
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self.send_response(400); self.end_headers(); return
+            if length < 0 or length > MAX_EVENT_BYTES:
+                self.send_response(413); self.end_headers(); return
             body = self.rfile.read(length)
             signature = self.headers.get("X-Hub-Signature-256", "")
             if secret:

@@ -7,14 +7,14 @@
   "required": ["task_id", "source_commit", "status", "checks"],
   "properties": {
     "task_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
-    "source_commit": {"type": "string", "minLength": 1},
+    "source_commit": {"type": "string", "pattern": "^[a-fA-F0-9]{7,64}$"},
     "status": {"enum": ["passed", "failed", "blocked"]},
-    "checks": {"type": "array", "items": {"$ref": "#/$defs/check"}},
-    "risks": {"type": "array", "items": {"type": "string"}},
-    "next_actions": {"type": "array", "items": {"type": "string"}},
+    "checks": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/check"}},
+    "risks": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 8192}},
+    "next_actions": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 8192}},
     "task_sha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
     "verified_at": {"type": "string"},
     "environment": {"type": "object"}
   },
-  "$defs": {"check": {"type": "object", "required": ["name", "expected", "actual", "status"], "properties": {"name": {"type": "string"}, "expected": {}, "actual": {}, "status": {"enum": ["passed", "failed", "blocked"]}, "evidence": {"type": "string"}}, "additionalProperties": true}}
+  "$defs": {"check": {"type": "object", "required": ["name", "expected", "actual", "status"], "properties": {"name": {"type": "string", "maxLength": 8192}, "expected": {"type": "string", "maxLength": 8192}, "actual": {"type": "string", "maxLength": 8192}, "status": {"enum": ["passed", "failed", "blocked"]}, "evidence": {"type": "string", "maxLength": 8192}}, "additionalProperties": true}}
 }

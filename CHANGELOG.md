@@ -2,6 +2,20 @@
 
 All notable changes to Codex Relay are recorded here. The project is currently in the MVP stage.
 
+## [0.3.0] - 2026-08-30
+
+### Security
+
+- Added strict task/receipt size, field, task ID, and commit SHA validation.
+- Validation commands now run without a shell, with executable allowlisting, bounded output, timeout process-tree termination, secret environment scrubbing, and worktree scope checks.
+- Added optional HMAC integrity for invitations through `CODEX_RELAY_INVITE_SECRET`.
+- Added atomic state/receipt writes, private config file permissions where supported, watcher binding checks, webhook body limits, and safer remote task path handling.
+- Hardened the GitHub Actions workflow with non-persistent checkout credentials and deterministic worktree cleanup.
+
+### Removed
+
+- Removed historical Logo and architecture concept drafts from the release tree.
+
 ## [0.2.0] - 2026-08-30
 
 ### Added

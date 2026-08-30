@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -9,7 +10,11 @@ from pathlib import Path
 from typing import Any
 
 TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
 STATUSES = {"passed", "failed", "blocked"}
+MAX_TASK_BYTES = 1024 * 1024
+MAX_RECEIPT_BYTES = 1024 * 1024
+MAX_FIELD_LENGTH = 8192
 
 
 class ProtocolError(ValueError):
@@ -25,6 +30,8 @@ def _metadata(markdown: str) -> dict[str, str]:
     for line in markdown.splitlines():
         match = re.match(r"^\s*-\s*([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*?)\s*$", line)
         if match:
+            if match.group(1) in result:
+                raise ProtocolError(f"task.md 元数据重复: {match.group(1)}")
             result[match.group(1)] = match.group(2).strip()
     return result
 
@@ -41,6 +48,8 @@ class Task:
 
     @classmethod
     def from_markdown(cls, markdown: str) -> "Task":
+        if len(markdown.encode("utf-8")) > MAX_TASK_BYTES:
+            raise ProtocolError("task.md 超过 1 MiB 大小限制")
         meta = _metadata(markdown)
         missing = [key for key in ("task_id", "source_commit", "target", "objective") if not meta.get(key)]
         if missing:
@@ -61,10 +70,14 @@ class Task:
         return cls.from_markdown(path.read_text(encoding="utf-8"))
 
     def validate(self) -> None:
-        if not self.source_commit or any(ch.isspace() for ch in self.source_commit):
-            raise ProtocolError("source_commit 不能为空或包含空白")
-        if not self.target:
+        if not COMMIT_RE.fullmatch(self.source_commit):
+            raise ProtocolError("source_commit 必须是 7-64 位十六进制 commit SHA")
+        if not self.target or len(self.target) > MAX_FIELD_LENGTH:
             raise ProtocolError("target 不能为空")
+        if not self.objective or len(self.objective) > MAX_FIELD_LENGTH:
+            raise ProtocolError("objective 不能为空或过长")
+        if any(len(item) > MAX_FIELD_LENGTH for item in self.validation_plan + self.expected_results):
+            raise ProtocolError("Validation Plan 或 Expected Results 项过长")
 
 
 def _section_items(markdown: str, heading: str) -> list[str]:
@@ -90,8 +103,10 @@ def validate_receipt(data: Any, task: Task | None = None) -> dict[str, Any]:
     missing = [key for key in required if key not in data]
     if missing:
         raise ProtocolError("receipt 缺少必填字段: " + ", ".join(missing))
-    if not TASK_ID_RE.match(str(data["task_id"])):
+    if not isinstance(data["task_id"], str) or not TASK_ID_RE.fullmatch(data["task_id"]):
         raise ProtocolError("receipt.task_id 非法")
+    if not isinstance(data["source_commit"], str) or not COMMIT_RE.fullmatch(data["source_commit"]):
+        raise ProtocolError("receipt.source_commit 必须是 7-64 位十六进制 commit SHA")
     if data["status"] not in STATUSES:
         raise ProtocolError("receipt.status 必须是 passed、failed 或 blocked")
     if not isinstance(data["checks"], list):
@@ -101,6 +116,8 @@ def validate_receipt(data: Any, task: Task | None = None) -> dict[str, Any]:
             raise ProtocolError(f"checks[{i}] 缺少 name/expected/actual/status")
         if check["status"] not in STATUSES:
             raise ProtocolError(f"checks[{i}].status 非法")
+        if any(not isinstance(check[key], str) or len(check[key]) > MAX_FIELD_LENGTH for key in ("name", "expected", "actual")):
+            raise ProtocolError(f"checks[{i}] 文本字段非法或过长")
     for key in ("risks", "next_actions"):
         if key in data and not isinstance(data[key], list):
             raise ProtocolError(f"receipt.{key} 必须是数组")
@@ -117,6 +134,11 @@ def validate_receipt(data: Any, task: Task | None = None) -> dict[str, Any]:
 
 
 def load_receipt(path: Path, task: Task | None = None) -> dict[str, Any]:
+    try:
+        if path.stat().st_size > MAX_RECEIPT_BYTES:
+            raise ProtocolError("receipt.json 超过 1 MiB 大小限制")
+    except FileNotFoundError as exc:
+        raise ProtocolError(f"找不到 receipt JSON: {path}") from exc
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -156,5 +178,11 @@ def sha256_file(path: Path) -> str:
 
 
 def dump_json(data: Any, path: Path) -> None:
+    atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
+
+def atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(content, encoding="utf-8")
+    os.replace(temporary, path)

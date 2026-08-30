@@ -107,7 +107,7 @@ receipts/
 ```markdown
 # Task
 - task_id: task-001
-- source_commit: abc123
+- source_commit: abc1234
 - target: B
 - objective: ...
 
@@ -130,7 +130,7 @@ receipts/
 ```json
 {
   "task_id": "task-001",
-  "source_commit": "abc123",
+  "source_commit": "abc1234",
   "status": "passed",
   "checks": [
     {

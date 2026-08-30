@@ -2,16 +2,19 @@ import io
 import json
 import hashlib
 import hmac
+import base64
 import http.client
+import os
 import threading
 import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from codex_mate.daemon import RelayDaemon, webhook_server
-from codex_mate.binding import bind_project, create_invite, join_verifier, provision_project, stop_watcher, watcher_status
+from codex_mate.binding import bind_project, create_invite, decode_invite, join_verifier, provision_project, start_watcher, stop_watcher, watcher_status
 from codex_mate.mcp_server import handle
 from codex_mate.protocol import ProtocolError, Task
 from codex_mate.relay import main
@@ -20,7 +23,7 @@ from codex_mate.verifier import run_task
 
 TASK = """# Task
 - task_id: task-test
-- source_commit: abc123
+- source_commit: abc1234
 - target: B
 - objective: smoke
 
@@ -38,6 +41,12 @@ class MvpTests(unittest.TestCase):
         receipt = run_task(task, Path.cwd())
         self.assertEqual(receipt["status"], "passed")
         self.assertEqual(receipt["task_id"], "task-test")
+
+    def test_invalid_task_protocol_produces_blocked_receipt(self):
+        task = Task.from_markdown(TASK.replace("abc1234", "not-a-sha"))
+        receipt = run_task(task, Path.cwd())
+        self.assertEqual(receipt["status"], "blocked")
+        self.assertEqual(receipt["checks"][0]["status"], "blocked")
 
     def test_publish_run_fetch_analyze_and_daemon(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -71,6 +80,38 @@ class MvpTests(unittest.TestCase):
         task = Task.from_markdown(TASK.replace("python -c", "rm -rf / && python -c"))
         receipt = run_task(task, Path.cwd())
         self.assertEqual(receipt["status"], "blocked")
+
+    def test_command_execution_is_shell_free_and_worktree_scoped(self):
+        task = Task.from_markdown(TASK.replace("python -c", "python -c \"print('one')\" && echo two"))
+        receipt = run_task(task, Path.cwd())
+        self.assertEqual(receipt["status"], "blocked")
+        outside = Path(tempfile.gettempdir()).resolve()
+        receipt = run_task(Task.from_markdown(TASK), Path.cwd(), worktree=str(outside))
+        self.assertEqual(receipt["status"], "blocked")
+
+    def test_signed_invitation_rejects_tampering(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            subprocess.run(["git", "remote", "add", "origin", "https://github.com/acme/demo.git"], cwd=root, check=True)
+            (root / "README.md").write_text("demo", encoding="utf-8")
+            with patch.dict(os.environ, {"CODEX_RELAY_INVITE_SECRET": "s" * 32}):
+                provision_project(root, "orchestrator")
+                invite = create_invite(root)
+                self.assertEqual(decode_invite(invite["url"])["ref"], "refs/heads/main")
+                token = invite["url"].rsplit("/", 1)[-1]
+                payload = json.loads(base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode())
+                payload["ref"] = "refs/heads/other"
+                forged = "codex-relay://join/" + base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
+                with self.assertRaises(ProtocolError):
+                    decode_invite(forged)
+
+    def test_watcher_requires_verifier_binding(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaises(ProtocolError):
+                start_watcher(Path(folder))
 
     def test_webhook_signature_and_delivery_deduplication(self):
         with tempfile.TemporaryDirectory() as folder:

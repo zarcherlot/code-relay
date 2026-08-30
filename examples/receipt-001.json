@@ -1,6 +1,6 @@
 {
   "task_id": "task-001",
-  "source_commit": "local-example",
+  "source_commit": "0000000",
   "status": "passed",
   "checks": [{
     "name": "验证命令 1",

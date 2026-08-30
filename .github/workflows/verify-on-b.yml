@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Find and verify new tasks
         shell: bash
         run: |
@@ -41,17 +42,26 @@ jobs:
                   raise SystemExit(f'missing source_commit for {task_id}')
               worktree = pathlib.Path('.codex-relay/worktrees') / task_id
               worktree.parent.mkdir(parents=True, exist_ok=True)
-              subprocess.run(['git', 'worktree', 'add', '--detach', str(worktree), match.group(1)], check=True)
-              result = subprocess.run(['python', '-m', 'codex_relay.relay', '--root', '.', 'run-task', task_id, '--worktree', str(worktree)], check=False)
-              # run-task returns 2 for a valid failed/blocked receipt; the receipt is still required.
-              if not receipt.exists():
-                  raise SystemExit(f'no receipt produced for {task_id}')
+              try:
+                  subprocess.run(['git', 'worktree', 'add', '--detach', str(worktree), match.group(1)], check=True)
+                  result = subprocess.run(['python', '-m', 'codex_relay.relay', '--root', '.', 'run-task', task_id, '--worktree', str(worktree)], check=False)
+                  # run-task returns 2 for a valid failed/blocked receipt; the receipt is still required.
+                  if not receipt.exists():
+                      raise SystemExit(f'no receipt produced for {task_id}')
+              finally:
+                  if worktree.exists():
+                      subprocess.run(['git', 'worktree', 'remove', '--force', str(worktree)], check=False)
           PY
       - name: Commit receipts
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           git config user.name "codex-relay-bot"
           git config user.email "codex-relay-bot@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          trap 'git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"' EXIT
           git add receipts/
           git diff --cached --quiet || git commit -m "codex-relay: publish verification receipts"
           git push

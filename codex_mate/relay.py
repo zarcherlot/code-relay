@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from .protocol import ProtocolError, Task, dump_json, load_receipt, render_receipt_markdown, utc_now
+from .protocol import ProtocolError, Task, atomic_write_text, dump_json, load_receipt, render_receipt_markdown, utc_now
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -201,7 +201,7 @@ def cmd_run_task(args: argparse.Namespace) -> int:
     output = root / "receipts" / task.task_id
     output.mkdir(parents=True, exist_ok=True)
     dump_json(receipt, output / "receipt.json")
-    (output / "receipt.md").write_text(render_receipt_markdown(receipt), encoding="utf-8")
+    atomic_write_text(output / "receipt.md", render_receipt_markdown(receipt))
     print(f"已生成回执 {output / 'receipt.json'}（{receipt['status']}）")
     return 0 if receipt["status"] == "passed" else 2
 

@@ -1,6 +1,6 @@
 # Task
 - task_id: task-001
-- source_commit: local-example
+- source_commit: 0000000
 - target: B
 - objective: 验证 Codex Relay MVP 的最小闭环
 

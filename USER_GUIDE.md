@@ -128,6 +128,7 @@ receipts/<task_id>/receipt.md
 ## 7. 安全建议
 
 - B runner 使用独立、低权限账号和独立 worktree。
+- 在 A、B 主机安全配置相同的 `CODEX_RELAY_INVITE_SECRET`（至少 32 个字符），让邀请链接启用 HMAC 完整性校验；不要把该值写进 Git、task、receipt 或聊天记录。
 - GitHub Token 只授予仓库内容读写和 Actions 所需的最小权限。
 - 不要把 Token、密码或其他密钥写入 task、receipt 或日志。
 - 不要把未经审查的任意 shell 脚本放入 Validation Plan。

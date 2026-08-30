@@ -2,7 +2,7 @@
 
 ![Codex Relay Logo](assets/icon.png)
 
-The Codex Relay logo is the red wax-seal coding-agent mark in [`assets/icon.png`](assets/icon.png). The earlier SVG concepts remain in `assets/` as historical drafts and are not used by the product.
+The Codex Relay logo is the red wax-seal coding-agent mark in [`assets/icon.png`](assets/icon.png).
 
 Codex Relay is an open-source Codex plugin for a branch-scoped development and verification loop between two hosts:
 
@@ -80,7 +80,7 @@ python -m codex_relay.relay --root . status --json
 
 ## Security and operating boundaries
 
-Codex Relay is an MVP. Validation commands are allowlisted and destructive command patterns are blocked, but users must still review task content and runner permissions. Invitation links are short-lived bearer links; production deployments should add signing, revocation, and centralized audit policy before treating them as a complete authorization system.
+Codex Relay is an MVP. Validation commands run without a shell, are allowlisted, have bounded output and timeouts, and destructive command patterns are blocked; users must still review task content and runner permissions. Invitations are short-lived bearer links by default; controlled deployments can set `CODEX_RELAY_INVITE_SECRET` (the same 32+ character secret on A and B) to enable HMAC integrity checks. Per-user authorization and revocation still require a hosted control plane.
 
 Read [SECURITY.md](SECURITY.md) before exposing a runner or webhook, [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.
 
