@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 )
@@ -19,15 +18,6 @@ func validateTaskID(value string) error {
 		return fmt.Errorf("非法 task_id: %s", value)
 	}
 	return nil
-}
-
-func samePath(left, right string) bool {
-	left = filepath.Clean(left)
-	right = filepath.Clean(right)
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(left, right)
-	}
-	return left == right
 }
 
 func pathWithinRoot(root, candidate string) (string, error) {

@@ -51,8 +51,8 @@ func BindProject(root, role, ref string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	top, err := runGit(root, gitTimeout, "rev-parse", "--show-toplevel")
-	if err != nil || !samePath(strings.TrimSpace(string(top)), root) {
+	prefix, err := runGit(root, gitTimeout, "rev-parse", "--show-prefix")
+	if err != nil || strings.TrimSpace(string(prefix)) != "" {
 		return nil, errors.New("绑定目录必须是 Git 工程根目录")
 	}
 	repository, err := canonicalRepo(root)
