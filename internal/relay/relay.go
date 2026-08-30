@@ -534,7 +534,7 @@ func Doctor(root string) (map[string]any, error) {
 		return map[string]any{"status": "error", "root": rootAbs, "checks": checks}, nil
 	}
 	add("root", "ok", rootAbs)
-	if out, gitErr := runGit(rootAbs, gitTimeout, "rev-parse", "--show-toplevel"); gitErr == nil && filepath.Clean(strings.TrimSpace(string(out))) == filepath.Clean(rootAbs) {
+	if out, gitErr := runGit(rootAbs, gitTimeout, "rev-parse", "--show-toplevel"); gitErr == nil && samePath(strings.TrimSpace(string(out)), rootAbs) {
 		add("git", "ok", "当前目录是 Git 工程根目录")
 	} else {
 		add("git", "error", "无法识别 Git 工程根目录")

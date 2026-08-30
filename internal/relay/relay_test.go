@@ -69,6 +69,12 @@ func TestTaskIDTraversalRejected(t *testing.T) {
 	}
 }
 
+func TestSamePathUsesPlatformSemantics(t *testing.T) {
+	if runtime.GOOS == "windows" && !samePath(`C:\Temp\Relay`, `c:/temp/relay`) {
+		t.Fatal("Windows paths should be compared case-insensitively")
+	}
+}
+
 func TestRemoteCredentialsAreRemoved(t *testing.T) {
 	remote, err := sanitizeRemote("https://x-access-token:secret@github.com/example/relay.git")
 	if err != nil {
