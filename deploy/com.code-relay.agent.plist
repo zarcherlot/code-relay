@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.code-relay.agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/code-relay-agent</string>
+    <string>daemon</string>
+    <string>--root</string>
+    <string>REPLACE_WITH_PROJECT_ROOT</string>
+    <string>--role</string>
+    <string>verifier</string>
+    <string>--poll-interval</string>
+    <string>5</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>REPLACE_WITH_HOME/Library/Logs/CodeRelay/agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>REPLACE_WITH_HOME/Library/Logs/CodeRelay/agent.error.log</string>
+</dict>
+</plist>

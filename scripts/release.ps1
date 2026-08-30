@@ -9,7 +9,9 @@ New-Item -ItemType Directory -Force $outputRoot | Out-Null
 $targets = @(
   @{ GOOS = "linux"; GOARCH = "amd64"; Name = "code-relay-agent-linux-amd64" },
   @{ GOOS = "linux"; GOARCH = "arm64"; Name = "code-relay-agent-linux-arm64" },
-  @{ GOOS = "windows"; GOARCH = "amd64"; Name = "code-relay-agent-windows-amd64.exe" }
+  @{ GOOS = "windows"; GOARCH = "amd64"; Name = "code-relay-agent-windows-amd64.exe" },
+  @{ GOOS = "darwin"; GOARCH = "amd64"; Name = "code-relay-agent-darwin-amd64" },
+  @{ GOOS = "darwin"; GOARCH = "arm64"; Name = "code-relay-agent-darwin-arm64" }
 )
 Push-Location $root
 try {

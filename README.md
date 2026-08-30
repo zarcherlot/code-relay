@@ -119,13 +119,13 @@ python -m code_relay.relay --root . run-task task-001
 python -m code_relay.relay --root . status --json
 ```
 
-The Go runtime can be built for Linux and Windows:
+The Go runtime ships for Linux, macOS, and Windows (amd64 and arm64 where applicable):
 
 ```powershell
 ./scripts/build-agent.ps1
 ```
 
-For a versioned release, run `./scripts/release.ps1`; it produces the three platform binaries, `release.json`, SBOM metadata, and `SHA256SUMS`.
+For a versioned release, run `./scripts/release.ps1` on Windows/PowerShell or `./scripts/build-agent.sh` on macOS/Linux; the release workflow produces five agent binaries, `release.json`, SBOM metadata, and `SHA256SUMS`.
 
 Use `code-relay-agent watcher --root .` or `code-relay-agent daemon --root . --role verifier` on a Target Host. The verifier defaults to the Go runtime; set `CODE_RELAY_RUNTIME=python` only for explicit development debugging.
 

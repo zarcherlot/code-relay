@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+output="${1:-dist}"
+mkdir -p "$output"
+
+targets=(
+  "linux amd64 code-relay-agent-linux-amd64"
+  "linux arm64 code-relay-agent-linux-arm64"
+  "windows amd64 code-relay-agent-windows-amd64.exe"
+  "darwin amd64 code-relay-agent-darwin-amd64"
+  "darwin arm64 code-relay-agent-darwin-arm64"
+)
+
+for target in "${targets[@]}"; do
+  read -r goos goarch name <<<"$target"
+  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "-s -w" -o "$output/$name" ./cmd/code-relay-agent
+done
+
+sha256sum "$output"/code-relay-agent-* > "$output/SHA256SUMS"

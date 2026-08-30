@@ -117,11 +117,13 @@ python -m code_relay.relay --root . run-task task-001
 python -m code_relay.relay --root . status --json
 ```
 
-Go 运行时支持 Linux 和 Windows：
+Go 运行时支持 Linux、macOS 和 Windows（macOS 同时提供 Intel 与 Apple Silicon 构建）：
 
 ```powershell
 ./scripts/build-agent.ps1
 ```
+
+在 macOS 或 Linux 上也可以直接运行 `./scripts/build-agent.sh`。版本发布会生成五个 agent 二进制、`release.json`、SBOM 元数据和 `SHA256SUMS`。
 
 在目标机上使用 `code-relay-agent watcher --root .` 或 `code-relay-agent daemon --root . --role verifier`。验证端默认使用 Go runtime；开发调试时才显式设置 `CODE_RELAY_RUNTIME=python`。
 

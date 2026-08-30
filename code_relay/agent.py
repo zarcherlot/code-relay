@@ -3,20 +3,34 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
 
 
+def platform_target(system: str | None = None, machine: str | None = None) -> tuple[str, str] | None:
+    """Return the Go release target for the current host (GOOS, GOARCH)."""
+    system = (system or platform.system()).lower()
+    machine = (machine or platform.machine()).lower()
+    goos = {"linux": "linux", "windows": "windows", "darwin": "darwin"}.get(system)
+    goarch = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(machine)
+    return (goos, goarch) if goos and goarch else None
+
+
 def find_agent() -> str | None:
+    target = platform_target()
+    suffix = ".exe" if target and target[0] == "windows" else ""
     configured = os.environ.get("CODE_RELAY_AGENT")
     candidates = [configured] if configured else []
     candidates.extend([
         str(Path(__file__).resolve().parents[1] / "bin" / ("code-relay-agent.exe" if os.name == "nt" else "code-relay-agent")),
-        str(Path(__file__).resolve().parents[1] / "dist" / ("code-relay-agent-windows-amd64.exe" if os.name == "nt" else "code-relay-agent-linux-amd64")),
         shutil.which("code-relay-agent"),
     ])
+    if target:
+        goos, goarch = target
+        candidates.insert(2, str(Path(__file__).resolve().parents[1] / "dist" / f"code-relay-agent-{goos}-{goarch}{suffix}"))
     for candidate in candidates:
         if candidate and Path(candidate).is_file():
             return str(Path(candidate).resolve())

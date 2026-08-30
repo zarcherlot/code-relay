@@ -38,6 +38,7 @@ code-relay-agent (Go)
 
 - 实现 task.md 解析、receipt 生成、SHA-256 绑定、状态查询和原子文件写入。
 - Go Runtime 只使用 `.code-relay/`，并清理敏感环境变量。
+- 交付 Linux、macOS（darwin/amd64、darwin/arm64）和 Windows 构建，并在 CI 中覆盖 macOS。
 - 提供 `version`、`status`、`validate-task`、`run-task` 命令。
 
 验收：`go test ./...`、`go vet ./...` 通过，Python 与 Go 共享任务/回执格式。

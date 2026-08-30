@@ -7,9 +7,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from code_relay.binding import bind_project, create_invite, decode_invite
+from code_relay.agent import platform_target
 
 
 class CodeRelayNamingTests(unittest.TestCase):
+    def test_go_agent_targets_include_macos_architectures(self):
+        self.assertEqual(platform_target("Darwin", "x86_64"), ("darwin", "amd64"))
+        self.assertEqual(platform_target("Darwin", "arm64"), ("darwin", "arm64"))
+        self.assertEqual(platform_target("Linux", "aarch64"), ("linux", "arm64"))
+        self.assertIsNone(platform_target("FreeBSD", "amd64"))
+
     def _repo(self, root: Path) -> None:
         subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
         subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
