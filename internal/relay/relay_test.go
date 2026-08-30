@@ -416,6 +416,9 @@ func TestSymlinkParentIsRejected(t *testing.T) {
 	if err := os.Symlink(realDirectory, link); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
+	if _, err := pathWithinRoot(root, filepath.Join(link, "value.json")); err == nil {
+		t.Fatal("expected project path symlink rejection")
+	}
 	if err := atomicJSON(filepath.Join(link, "value.json"), map[string]any{"ok": true}); err == nil {
 		t.Fatal("expected symlink parent rejection")
 	}

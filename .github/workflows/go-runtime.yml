@@ -27,6 +27,7 @@ permissions:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -37,6 +38,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.27"
+          cache: false
       - name: Check formatting
         shell: bash
         run: |
@@ -60,6 +62,7 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.27"
+          cache: false
       - name: Build all supported targets
         run: ./scripts/build-agent.sh dist
       - name: Reject committed credential patterns

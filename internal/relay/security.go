@@ -25,6 +25,10 @@ func pathWithinRoot(root, candidate string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	rootResolved, err := resolveRootPath(rootAbs)
+	if err != nil {
+		return "", err
+	}
 	candidateAbs, err := filepath.Abs(candidate)
 	if err != nil {
 		return "", err
@@ -33,13 +37,11 @@ func pathWithinRoot(root, candidate string) (string, error) {
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) || filepath.IsAbs(relative) {
 		return "", errors.New("路径必须位于工程根目录内")
 	}
-	if err := rejectSymlinkComponents(rootAbs); err != nil {
+	candidateResolved := filepath.Join(rootResolved, relative)
+	if err := rejectSymlinkComponentsWithin(rootResolved, candidateResolved); err != nil {
 		return "", err
 	}
-	if err := rejectSymlinkComponents(candidateAbs); err != nil {
-		return "", err
-	}
-	return candidateAbs, nil
+	return candidateResolved, nil
 }
 
 func projectPath(root string, elements ...string) (string, error) {
@@ -48,23 +50,30 @@ func projectPath(root string, elements ...string) (string, error) {
 }
 
 func rejectSymlinkComponents(path string) error {
-	current, err := filepath.Abs(path)
-	if err != nil {
+	info, err := os.Lstat(path)
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("拒绝符号链接路径: %s", path)
+	}
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	for {
-		info, statErr := os.Lstat(current)
-		if statErr == nil && info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("拒绝符号链接路径: %s", current)
+	return nil
+}
+
+func rejectSymlinkComponentsWithin(root, candidate string) error {
+	relative, err := filepath.Rel(root, candidate)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) || filepath.IsAbs(relative) {
+		return errors.New("路径必须位于工程根目录内")
+	}
+	current := root
+	if relative == "." {
+		return rejectSymlinkComponents(current)
+	}
+	for _, component := range strings.Split(relative, string(os.PathSeparator)) {
+		current = filepath.Join(current, component)
+		if err := rejectSymlinkComponents(current); err != nil {
+			return err
 		}
-		if statErr != nil && !os.IsNotExist(statErr) {
-			return statErr
-		}
-		parent := filepath.Dir(current)
-		if parent == current {
-			break
-		}
-		current = parent
 	}
 	return nil
 }
