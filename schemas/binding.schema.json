@@ -10,7 +10,7 @@
     "ref": {"type": "string", "pattern": "^refs/heads/[A-Za-z0-9._/-]+$"},
     "task_path": {"const": "tasks/**"},
     "role": {"enum": ["orchestrator", "verifier"]},
-    "runtime": {"enum": ["go", "python"]},
+    "runtime": {"enum": ["go"]},
     "verifier_id": {"type": "string", "maxLength": 128},
     "created_at": {"type": "string", "maxLength": 128},
     "joined_at": {"type": "string", "maxLength": 128}

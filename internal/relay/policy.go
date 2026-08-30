@@ -6,15 +6,15 @@ import (
 )
 
 var allowedCommands = map[string]bool{
-	"python": true, "python3": true, "pytest": true, "py": true, "node": true,
-	"npm": true, "go": true, "cargo": true, "dotnet": true, "bash": true,
+	"node": true,
+	"npm":  true, "go": true, "cargo": true, "dotnet": true, "bash": true,
 	"sh": true, "pwsh": true, "powershell": true, "cmd": true, "echo": true,
 }
 
 var deniedTokens = []string{
 	"rm -rf", "rmdir /s", "del /s", "format ", "shutdown", "git push",
 	"git reset --hard", "curl | sh", "wget | sh", "invoke-webrequest",
-	"pip install", "npm install",
+	"npm install",
 }
 
 var shellOperators = []string{"&&", "||", "|", ";", "&", ">", "<"}

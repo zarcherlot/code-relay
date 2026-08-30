@@ -2,11 +2,12 @@
 
 role: orchestrator
 runtime: go
-poll_interval_seconds: 5
+runner_label: codex-b
 repository_root: .
 
 # B host uses:
 # role: verifier
 # runtime: go
+# runner_label: codex-b
 # Set CODE_RELAY_INVITE_SECRET on both A and B when signed invitation integrity
 # is required (32+ characters).

@@ -39,17 +39,17 @@ B Codex 自动完成：
 
 ## 3. 产品形态
 
-MVP 不做独立 Web 控制台，形态只有一个 Codex Plugin（CLI/Go daemon 是插件的内部 runtime）：
+MVP 不做独立 Web 控制台，形态只有一个 Codex Plugin（Go CLI/MCP 是插件 runtime，GitHub Actions 负责目标机调度）：
 
 ```text
 Code Relay Plugin
 ├── orchestrator Skill      # A 的绑定、发布、监听、分析规则
 ├── verifier Skill          # B 的加入、验证、回执规则
-├── MCP tools                # bind / invite / join / watcher lifecycle
-└── runtime                  # Git-backed task/receipt、watcher、执行器
+├── MCP tools                # bind / invite / join / publish / analyze
+└── Go runtime               # Git-backed task/receipt、隔离执行器
 ```
 
-A、B 安装同一个插件，通过当前动作和项目配置区分角色；不要求用户安装 pip/conda 包或执行 relay install：
+A、B 安装同一个插件，通过当前动作和项目配置区分角色；不要求用户安装语言运行时或执行 relay install：
 
 ```yaml
 # A 主机
@@ -75,17 +75,17 @@ role: verifier
       ├── receipts/task-xxx/receipt.json
       └── receipts/task-xxx/receipt.md
           ↓ GitHub push / Actions
- B Code Relay Plugin + Go watcher + Codex
+ B Code Relay Plugin + GitHub Actions runner + Go agent
   ├─ 发现任务
   ├─ 执行验证
   └─ 推送回执
 ```
 
-MVP 使用 GitHub Actions self-hosted runner 触发 B，B 不需要公网入站 Webhook。若需要 A 实时收到事件，A 的 `code-relay-agent daemon` 订阅 GitHub Webhook；开发阶段可先用短轮询替代。
+MVP 使用 GitHub Actions self-hosted runner 触发 B，B 不需要公网入站 Webhook。GitHub 负责排队、路由和重试，Go agent 只负责隔离执行和回执。
 
 ### 4.1 工程/分支绑定
 
-一次 Code Relay 绑定由 `repository + refs/heads/<branch>` 唯一确定。A 在工程目录的 Codex 中请求“绑定当前工程当前分支”后，插件读取 Git remote 和当前分支，写入 `.code-relay/project.json`，提交并推送集成文件，并立即生成短时效 B 加入链接。B 粘贴链接后，插件先展示仓库、分支和权限；若当前 Codex 窗口没有仓库，确认后自动克隆该分支到空目录并关联，随后启动 watcher。若已有不同仓库/分支，原目录保持不变。
+一次 Code Relay 绑定由 `repository + refs/heads/<branch>` 唯一确定。A 在工程目录的 Codex 中请求“绑定当前工程当前分支”后，插件读取 Git remote 和当前分支，写入 `.code-relay/project.json`，提交并推送集成文件，并立即生成短时效 B 加入链接。B 粘贴链接后，插件先展示仓库、分支和权限；若当前 Codex 窗口没有仓库，确认后自动克隆该分支到空目录并关联，随后注册带 `codex-b` 标签的 GitHub Actions runner。若已有不同仓库/分支，原目录保持不变。
 
 ## 5. GitHub 数据约定
 

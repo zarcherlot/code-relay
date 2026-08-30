@@ -372,7 +372,7 @@ func RunTask(root, id string, timeout int, worktree string) (Receipt, error) {
 }
 
 // PersistReceipt writes both machine-readable and human-readable artifacts.
-// The write is idempotent and keeps the same directory contract as Python.
+// The write is idempotent and keeps the stable directory contract.
 func PersistReceipt(root string, receipt Receipt) error {
 	dir := filepath.Join(root, "receipts", receipt.TaskID)
 	if err := atomicJSON(filepath.Join(dir, "receipt.json"), receipt); err != nil {

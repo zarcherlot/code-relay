@@ -9,6 +9,6 @@ Treat the current Git remote and checked-out branch as the project binding. Use 
 
 After binding, create a short-lived verifier invitation automatically. Never commit a reusable secret or GitHub token.
 
-For each task, implement and locally verify the change, record the merged commit SHA, publish a task with explicit commands and expected results, then wait for a matching `task_id + source_commit` receipt. Summarize `passed` as complete, `failed` as a proposed next iteration, and `blocked` as a user decision point.
+For each task, implement and locally verify the change, record the merged commit SHA, publish a task with explicit commands and expected results, then wait for a matching `task_id + source_commit` receipt from the `codex-b` GitHub Actions runner. Summarize `passed` as complete, `failed` as a proposed next iteration, and `blocked` as a user decision point.
 
 Prefer natural language such as “绑定当前工程”“生成 B 加入链接”“查看验证状态” and map these to plugin tools. The `code-relay` CLI is an implementation detail.

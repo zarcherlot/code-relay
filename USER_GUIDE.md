@@ -22,7 +22,7 @@ receipts/<task_id>/receipt.md        # B 给人和 Codex 阅读的结果
 
 ## 2. 一次性准备
 
-普通用户只需从 Codex 插件入口安装 **Code Relay**。不需要手动执行 `pip install`、`conda install` 或 `relay install`；这些属于插件内部的 runtime 配置动作。
+普通用户只需从 Codex 插件入口安装 **Code Relay**。插件直接启动 Go `code-relay-agent`，不需要安装 Python 或其他语言运行时。
 
 ### A 主机（编排端）
 
@@ -30,18 +30,11 @@ receipts/<task_id>/receipt.md        # B 给人和 Codex 阅读的结果
 
 ### B 主机（验证端）
 
-B 用户安装同一个 Code Relay 插件，把 A 生成的加入链接粘贴到该工程的 Codex 中，并确认仓库、分支和权限。插件默认使用 `code-relay-agent` Go runtime，生成 verifier 配置并启动 watcher；开发调试时可显式选择 `runtime=python`。准备同一个 GitHub 仓库的 self-hosted runner，并添加标签 `codex-b`；runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
-
-如果暂时没有 GitHub runner，开发者可以在 B 的工作目录用内部调试命令启动 watcher（普通用户无需执行）：
-
-```powershell
-python -m code_relay.daemon --root . --role verifier
-```
+B 用户安装同一个 Code Relay 插件，把 A 生成的加入链接粘贴到该工程的 Codex 中，并确认仓库、分支和权限。插件生成 verifier 配置；随后在同一仓库注册带 `codex-b` 标签的 GitHub Actions self-hosted runner。runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
 
 排查主机环境时运行：
 
 ```powershell
-python -m code_relay.relay --root . doctor --json
 code-relay-agent doctor --root .
 ```
 
@@ -91,7 +84,7 @@ code-relay-agent doctor --root .
 
 ## 4. B 端如何验证
 
-B 只执行任务中明确列出的验证命令。默认支持常见的 `python`、`pytest`、`npm`、`node`、`go`、`cargo`、`dotnet` 等命令；危险操作（例如递归删除、强制 reset、push）会被拦截。
+B 只执行任务中明确列出的验证命令。Relay 不预设某一种项目语言；命令必须通过 allowlist，危险操作（例如递归删除、强制 reset、push）会被拦截。
 
 无论验证成功、失败、超时还是被拦截，都必须生成：
 
@@ -100,7 +93,7 @@ receipts/<task_id>/receipt.json
 receipts/<task_id>/receipt.md
 ```
 
-正常情况下，B 用户不需要手工执行任务；watcher 会在发现新 task 后自动启动 B Codex。CLI 仅用于开发者故障排查。
+正常情况下，B 用户不需要手工执行任务；GitHub Actions runner 会在发现 task 变更后调用 `code-relay-agent run-pending`。CLI 仅用于开发者故障排查。
 
 回执会记录每条命令的 expected、actual、status、耗时、环境、风险和后续建议。`task_id`、`source_commit` 和任务内容哈希不一致时，A 端会拒绝回执。
 
@@ -118,7 +111,7 @@ receipts/<task_id>/receipt.md
 
 ### 找不到回执
 
-确认 B runner 在线、workflow 已启用，并检查 `tasks/<task_id>/task.md` 是否已经推送到远端。A 端 daemon 只会读取当前 checkout 能看到的文件。
+确认 B runner 在线、workflow 已启用，并检查 `tasks/<task_id>/task.md` 是否已经推送到远端。
 
 ### 回执显示 `invalid`
 

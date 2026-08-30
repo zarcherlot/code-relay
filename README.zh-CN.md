@@ -58,13 +58,13 @@ Relay 适合那些经常遇到“本地能写，但必须去另一台机器才�
 - **自然语言启用**：在 Codex 中请求启用 Relay，自动生成目标机加入链接。
 - **短时邀请链接**：`code-relay://join/...` 携带仓库和分支预览，便于安全加入。
 - **安全的目标机初始化**：目标机没有绑定项目时，自动克隆获准的仓库；非空目录或其他项目不会被覆盖。
-- **后台监听**：只监听已订阅的远端分支，把新任务放进私有收件箱，不覆盖当前工作树。
+- **GitHub Actions 验证**：将任务路由到带 `codex-b` 标签的 self-hosted runner，由 Go agent 在隔离 worktree 中验证精确 commit。
 - **可靠回执**：任务幂等发布、绑定 source commit、校验回执、命令白名单、超时控制，以及失败/阻塞回执。
 - **GitHub Actions 支持**：可使用带 `codex-b` 标签的 self-hosted runner 执行目标环境验证。
 
 ## 从 Codex 安装
 
-从 Codex 插件界面安装 **Code Relay**。普通用户不需要执行 `pip install`、`conda install` 或单独的 relay 安装命令。
+从 Codex 插件界面安装 **Code Relay**。插件直接启动捆绑的 Go `code-relay-agent`，不需要安装 Python 或其他语言运行时。
 
 ### Dev Host：绑定当前项目
 
@@ -79,9 +79,9 @@ Relay 适合那些经常遇到“本地能写，但必须去另一台机器才�
 在 Target Host 安装同一个插件，把加入链接粘贴到 Codex 中并确认：
 
 1. 如果工作区为空或尚未绑定，插件会克隆邀请中的仓库和分支。
-2. 写入验证端绑定信息并自动启动 watcher。
-3. 从绑定的远程分支拉取新任务，放入私有收件箱。
-4. 验证运行时或配置好的 host adapter 执行任务中的验证计划，并发布回执。
+2. 写入验证端绑定信息，并将目标机注册为带 `codex-b` 标签的 GitHub Actions runner。
+3. GitHub Actions 根据 `tasks/**` 变更调度验证任务。
+4. Go `code-relay-agent run-pending` 执行验证计划并发布回执。
 
 如果当前目录非空，或属于其他项目，Code Relay 会保持原目录不变，并要求使用单独的目标目录。
 
@@ -93,7 +93,8 @@ Relay 适合那些经常遇到“本地能写，但必须去另一台机器才�
 .codex-plugin/plugin.json       # Codex 插件清单
 .mcp.json                       # 插件本地 MCP 服务
 skills/                         # 编排端和验证端 Skills
-code_relay/                     # Python 运行时与门面层
+cmd/code-relay-agent/           # Go CLI 与 MCP 入口
+internal/relay/                 # Go 协议、执行器、Git 与 MCP 实现
 schemas/                        # task 和 receipt JSON Schema
 templates/                      # task 和 receipt Markdown 模板
 .github/workflows/              # 可选的目标机 self-hosted runner 工作流
@@ -102,19 +103,20 @@ tests/                          # 本地 MVP 与端到端测试
 
 ## 开发者本地验证
 
-项目依赖较少，目标 Python 版本为 3.10+：
+项目依赖较少，需要 Go 1.22+：
 
 ```powershell
-python -m unittest discover -s tests -v
-python -m compileall -q code_relay tests scripts
+go test -race ./...
+go vet ./...
+go build ./cmd/code-relay-agent
 ```
 
 CLI 是开发和 CI 的备用入口，不是普通用户的安装入口：
 
 ```powershell
-python -m code_relay.relay --root . publish --file examples/task-001.md --no-git
-python -m code_relay.relay --root . run-task task-001
-python -m code_relay.relay --root . status --json
+code-relay-agent publish --root . --file examples/task-001.md --no-git
+code-relay-agent run-task task-001 --root .
+code-relay-agent status --root .
 ```
 
 Go 运行时支持 Linux、macOS 和 Windows（macOS 同时提供 Intel 与 Apple Silicon 构建）：
@@ -123,11 +125,17 @@ Go 运行时支持 Linux、macOS 和 Windows（macOS 同时提供 Intel 与 Appl
 ./scripts/build-agent.ps1
 ```
 
+要生成包含当前平台 MCP 可执行文件和正确 `.mcp.json` 的插件包，可运行：
+
+```powershell
+./scripts/package-plugin.ps1
+```
+
 在 macOS 或 Linux 上也可以直接运行 `./scripts/build-agent.sh`。版本发布会生成五个 agent 二进制、`release.json`、SBOM 元数据和 `SHA256SUMS`。
 
-在目标机上使用 `code-relay-agent watcher --root .` 或 `code-relay-agent daemon --root . --role verifier`。验证端默认使用 Go runtime；开发调试时才显式设置 `CODE_RELAY_RUNTIME=python`。
+在目标机上安装带 `codex-b` 标签的 GitHub Actions self-hosted runner，并将 `code-relay-agent` 放入工程的 `bin/` 目录。workflow 会调用 `run-pending`，不需要 Relay watcher、daemon 或 Python runtime。
 
-排查主机环境可运行 `code-relay-agent doctor --root .` 或 `python -m code_relay.relay --root . doctor --json`。
+排查主机环境可运行 `code-relay-agent doctor --root .`。
 
 ## 安全边界
 

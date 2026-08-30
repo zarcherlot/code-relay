@@ -39,7 +39,7 @@ try {
     metadata = @{ timestamp = (Get-Date).ToUniversalTime().ToString("o"); component = @{ name = "code-relay"; version = $Version } }
     components = @(
       @{ type = "application"; name = "code-relay-agent"; version = $Version; purl = "pkg:golang/github.com/zarcherlot/code-relay@$Version" },
-      @{ type = "application"; name = "code-relay"; version = $Version; purl = "pkg:pypi/code-relay@$Version" }
+      @{ type = "application"; name = "code-relay"; version = $Version; purl = "pkg:golang/github.com/zarcherlot/code-relay@$Version" }
     )
   } | ConvertTo-Json -Depth 8
   [IO.File]::WriteAllText((Join-Path $outputRoot "sbom.cdx.json"), $sbom + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))

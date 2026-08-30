@@ -1,6 +1,6 @@
 {
   "code-relay": {
-    "command": "python",
-    "args": ["./scripts/code_relay_mcp.py"]
+    "command": "./bin/code-relay-agent",
+    "args": ["mcp-stdio"]
   }
 }

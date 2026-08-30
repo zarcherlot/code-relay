@@ -27,37 +27,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import pathlib, subprocess, shutil
-          import re
-          tasks = sorted(pathlib.Path('tasks').glob('*/task.md'))
-          for task in tasks:
-              task_id = task.parent.name
-              receipt = pathlib.Path('receipts') / task_id / 'receipt.json'
-              if receipt.exists():
-                  continue
-              text = task.read_text(encoding='utf-8')
-              match = re.search(r'^-\s*source_commit:\s*(\S+)', text, re.M)
-              if not match:
-                  raise SystemExit(f'missing source_commit for {task_id}')
-              worktree = pathlib.Path('.code-relay/worktrees') / task_id
-              worktree.parent.mkdir(parents=True, exist_ok=True)
-              try:
-                  subprocess.run(['git', 'worktree', 'add', '--detach', str(worktree), match.group(1)], check=True)
-                  agent = pathlib.Path('bin/code-relay-agent')
-                  if not (agent.exists() and agent.is_file()):
-                      agent_name = shutil.which('code-relay-agent')
-                      agent = pathlib.Path(agent_name) if agent_name else agent
-                  if not (agent.exists() and agent.is_file()):
-                      raise SystemExit('code-relay-agent is required on the verifier runner')
-                  result = subprocess.run([str(agent), 'run-task', task_id, '--root', '.', '--worktree', str(worktree)], check=False)
-                  # run-task returns 2 for a valid failed/blocked receipt; the receipt is still required.
-                  if not receipt.exists():
-                      raise SystemExit(f'no receipt produced for {task_id}')
-              finally:
-                  if worktree.exists():
-                      subprocess.run(['git', 'worktree', 'remove', '--force', str(worktree)], check=False)
-          PY
+          test -x bin/code-relay-agent || chmod +x bin/code-relay-agent
+          ./bin/code-relay-agent run-pending --root . --timeout 1800
       - name: Commit receipts
         shell: bash
         env:
@@ -68,6 +39,4 @@ jobs:
           git config user.email "code-relay-bot@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           trap 'git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"' EXIT
-          git add receipts/
-          git diff --cached --quiet || git commit -m "code-relay: publish verification receipts"
-          git push
+          ./bin/code-relay-agent publish-receipts --root .

@@ -1,0 +1,31 @@
+name: Code Relay Go runtime
+
+on:
+  push:
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "schemas/**"
+      - "go.mod"
+      - ".github/workflows/go-runtime.yml"
+  pull_request:
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "schemas/**"
+      - "go.mod"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - run: test -z "$(gofmt -l cmd internal)"
+      - run: go test -race ./...
+      - run: go vet ./...

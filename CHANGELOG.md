@@ -6,7 +6,7 @@ All notable changes to Code Relay are recorded here. The project is currently in
 
 ### Breaking
 
-- Consolidated the product, Python package, CLI, metadata directory, invitation URI, and secret environment variable under the Code Relay naming scheme.
+- Consolidated the product, Go agent, CLI, metadata directory, invitation URI, and secret environment variable under the Code Relay naming scheme.
 - Removed deprecated package namespaces, launchers, migration commands, and legacy protocol formats.
 - Added the Go `code-relay-agent` runtime for Linux, macOS (Intel and Apple Silicon), and Windows.
 

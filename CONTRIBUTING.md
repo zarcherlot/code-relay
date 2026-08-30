@@ -5,7 +5,7 @@ Thanks for helping improve Code Relay. The project is intentionally small: chang
 ## Before opening a change
 
 1. Read [README.md](README.md), [USER_GUIDE.md](USER_GUIDE.md), and the relevant Skill under `skills/`.
-2. Keep user-facing setup plugin-first. Do not introduce a required `pip`, `conda`, or CLI installation step.
+2. Keep user-facing setup plugin-first. Do not introduce a required language runtime installation step.
 3. Keep repository and remote ref explicit in new binding or watcher behavior.
 4. Do not add secrets, tokens, generated invitations, watcher state, or local receipts to commits.
 
@@ -14,11 +14,9 @@ Thanks for helping improve Code Relay. The project is intentionally small: chang
 Run the complete test and compile checks from the repository root:
 
 ```powershell
-python -m unittest discover -s tests -v
-python -m compileall -q code_relay tests scripts
-go test ./...
+go test -race ./...
 go vet ./...
-python -m code_relay.relay --root . doctor --json
+go build ./cmd/code-relay-agent
 ```
 
 When changing `.codex-plugin/plugin.json`, `.mcp.json`, or a Skill, also verify JSON and frontmatter before submitting.

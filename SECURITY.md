@@ -2,12 +2,12 @@
 
 ## Scope
 
-Code Relay moves source references, task instructions, validation commands, and receipts through Git. It can also start a local watcher and execute commands on a verifier host. Treat every task and invitation as untrusted input until it has been reviewed.
+Code Relay moves source references, task instructions, validation commands, and receipts through GitHub Actions. The Go agent executes commands on a verifier runner. Treat every task and invitation as untrusted input until it has been reviewed.
 
 ## Current MVP boundaries
 
 - Invitations are short-lived bearer links by default. Set `CODE_RELAY_INVITE_SECRET` to the same 32+ character secret on A and B to add HMAC integrity verification. Anyone who obtains an unexpired unsigned link can otherwise attempt to join the encoded repository/ref. Do not paste invitations or secrets into public issues or logs.
-- The verifier runtime allowlists common development executables and blocks several destructive command patterns, but this is defense-in-depth rather than a sandbox.
+- The verifier runtime allowlists project executables and blocks several destructive command patterns, but this is defense-in-depth rather than a sandbox.
 - Use a dedicated low-privilege self-hosted runner and a separate worktree for validation.
 - Give GitHub tokens only the minimum contents/actions permissions required to fetch tasks and publish receipts.
 - Keep webhook secrets out of Git and validate `X-Hub-Signature-256` when a webhook is enabled.
@@ -29,7 +29,7 @@ Before production use, the project should add asymmetric signed invitations or a
 
 ## Runtime hardening in 1.0
 
-- The Go agent is the production verifier runtime. Python execution is an explicit development choice rather than a silent fallback.
-- Validation commands run as structured argv without a shell. The shared policy is in `schemas/runtime-policy.json` and is checked by both runtime test suites.
+- The Go agent is the only Relay verifier runtime. Validation commands are explicitly configured per project and never fall back to an undeclared runtime.
+- Validation commands run as structured argv without a shell. The shared policy is in `schemas/runtime-policy.json` and is checked by Go tests.
 - Task execution is serialized per `task_id`, invite nonces are consumed once by default, and webhook requests require JSON, signature validation when configured, bounded bodies, and rate limiting.
 - Configuration, task inbox files, and receipts use atomic writes and reject symlink targets. Use `code-relay-agent doctor --root <project>` before enabling a service.
