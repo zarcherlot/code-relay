@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-relay.dev/schemas/receipt.schema.json",
+  "title": "Codex Relay verification receipt",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["task_id", "source_commit", "status", "checks"],
+  "properties": {
+    "task_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+    "source_commit": {"type": "string", "minLength": 1},
+    "status": {"enum": ["passed", "failed", "blocked"]},
+    "checks": {"type": "array", "items": {"$ref": "#/$defs/check"}},
+    "risks": {"type": "array", "items": {"type": "string"}},
+    "next_actions": {"type": "array", "items": {"type": "string"}},
+    "task_sha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+    "verified_at": {"type": "string"},
+    "environment": {"type": "object"}
+  },
+  "$defs": {"check": {"type": "object", "required": ["name", "expected", "actual", "status"], "properties": {"name": {"type": "string"}, "expected": {}, "actual": {}, "status": {"enum": ["passed", "failed", "blocked"]}, "evidence": {"type": "string"}}, "additionalProperties": true}}
+}

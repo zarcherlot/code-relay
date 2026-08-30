@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="title desc">
+  <title id="title">Relay envelope symbol concepts</title>
+  <desc id="desc">Three minimal envelope marks showing the Codex greater-than underscore symbol being inserted.</desc>
+  <rect width="1200" height="460" fill="#fffdf8"/>
+  <style>
+    .ink { fill:none; stroke:#111827; stroke-width:14; stroke-linecap:round; stroke-linejoin:round; }
+    .card { fill:#fffdf8; stroke:#111827; stroke-width:12; stroke-linejoin:round; }
+    .mark { fill:none; stroke:#111827; stroke-width:12; stroke-linecap:round; stroke-linejoin:round; }
+    .label { fill:#6b7280; font: 600 16px Inter, Segoe UI, Arial, sans-serif; letter-spacing:2px; }
+  </style>
+
+  <!-- Concept A: visible card entering an open envelope -->
+  <g transform="translate(40 30)">
+    <text class="label" x="20" y="28">A  /  INSERT</text>
+    <path class="ink" d="M42 150 L42 360 Q42 380 62 380 H318 Q338 380 338 360 V150"/>
+    <path class="ink" d="M42 152 L200 270 L338 152"/>
+    <path class="ink" d="M44 150 L200 48 L338 150"/>
+    <g transform="translate(108 112) rotate(18 92 54)">
+      <path class="card" d="M12 12 H172 Q184 12 184 24 V86 Q184 98 172 98 H12 Q0 98 0 86 V24 Q0 12 12 12 Z"/>
+      <path class="mark" d="M48 44 L78 64 L48 84"/>
+      <path class="mark" d="M104 84 H148"/>
+    </g>
+  </g>
+
+  <!-- Concept B: envelope opening becomes a relay slot -->
+  <g transform="translate(420 30)">
+    <text class="label" x="20" y="28">B  /  SLOT</text>
+    <path class="ink" d="M42 150 V360 Q42 380 62 380 H318 Q338 380 338 360 V150"/>
+    <path class="ink" d="M42 150 L160 238"/>
+    <path class="ink" d="M338 150 L220 238"/>
+    <path class="ink" d="M42 150 L200 48 L338 150"/>
+    <g transform="translate(116 112)">
+      <path class="card" d="M12 12 H156 Q168 12 168 24 V88 Q168 100 156 100 H12 Q0 100 0 88 V24 Q0 12 12 12 Z"/>
+      <path class="mark" d="M42 42 L72 62 L42 82"/>
+      <path class="mark" d="M96 82 H138"/>
+    </g>
+  </g>
+
+  <!-- Concept C: the > is the leading edge, underscore trails into the envelope -->
+  <g transform="translate(800 30)">
+    <text class="label" x="20" y="28">C  /  LEAD</text>
+    <path class="ink" d="M42 150 V360 Q42 380 62 380 H318 Q338 380 338 360 V150"/>
+    <path class="ink" d="M42 150 L200 270 L338 150"/>
+    <path class="ink" d="M42 150 L200 48 L338 150"/>
+    <g transform="translate(98 118) rotate(-12 98 48)">
+      <path class="mark" d="M18 26 L66 58 L18 90"/>
+      <path class="mark" d="M92 90 H170"/>
+    </g>
+    <path class="ink" d="M102 204 L164 250" opacity=".28"/>
+  </g>
+</svg>

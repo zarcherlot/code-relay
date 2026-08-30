@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.codex-relay/*
+!.codex-relay/
+!.codex-relay/project.json
+.codex-mate/
+.pytest_cache/

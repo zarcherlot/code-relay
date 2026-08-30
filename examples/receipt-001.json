@@ -1,0 +1,13 @@
+{
+  "task_id": "task-001",
+  "source_commit": "local-example",
+  "status": "passed",
+  "checks": [{
+    "name": "验证命令 1",
+    "expected": "退出码为 0",
+    "actual": "退出码 0; mvp smoke ok",
+    "status": "passed"
+  }],
+  "risks": [],
+  "next_actions": []
+}

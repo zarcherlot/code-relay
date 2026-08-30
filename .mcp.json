@@ -1,0 +1,6 @@
+{
+  "codex-relay": {
+    "command": "python",
+    "args": ["./scripts/codex_relay_mcp.py"]
+  }
+}

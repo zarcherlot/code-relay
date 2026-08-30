@@ -1,0 +1,8 @@
+# Copy to a host-local config file; the CLI flags remain the source of truth.
+# A host
+role: orchestrator
+poll_interval_seconds: 5
+repository_root: .
+
+# B host uses:
+# role: verifier

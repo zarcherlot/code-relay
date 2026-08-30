@@ -1,0 +1,57 @@
+name: Codex Relay - verify on B
+
+on:
+  push:
+    paths:
+      - "tasks/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: codex-relay-verifier
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: [self-hosted, codex-b]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout task commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Find and verify new tasks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib, subprocess
+          import re
+          tasks = sorted(pathlib.Path('tasks').glob('*/task.md'))
+          for task in tasks:
+              task_id = task.parent.name
+              receipt = pathlib.Path('receipts') / task_id / 'receipt.json'
+              if receipt.exists():
+                  continue
+              text = task.read_text(encoding='utf-8')
+              match = re.search(r'^-\s*source_commit:\s*(\S+)', text, re.M)
+              if not match:
+                  raise SystemExit(f'missing source_commit for {task_id}')
+              worktree = pathlib.Path('.codex-relay/worktrees') / task_id
+              worktree.parent.mkdir(parents=True, exist_ok=True)
+              subprocess.run(['git', 'worktree', 'add', '--detach', str(worktree), match.group(1)], check=True)
+              result = subprocess.run(['python', '-m', 'codex_relay.relay', '--root', '.', 'run-task', task_id, '--worktree', str(worktree)], check=False)
+              # run-task returns 2 for a valid failed/blocked receipt; the receipt is still required.
+              if not receipt.exists():
+                  raise SystemExit(f'no receipt produced for {task_id}')
+          PY
+      - name: Commit receipts
+        shell: bash
+        run: |
+          git config user.name "codex-relay-bot"
+          git config user.email "codex-relay-bot@users.noreply.github.com"
+          git add receipts/
+          git diff --cached --quiet || git commit -m "codex-relay: publish verification receipts"
+          git push
