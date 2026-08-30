@@ -1,9 +1,12 @@
 package relay
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
+	"time"
 )
 
 const testTask = `# Task
@@ -73,4 +76,63 @@ func TestInvalidTaskProducesBlockedReceipt(t *testing.T) {
 	if receipt.Status != "blocked" || len(receipt.Checks) != 1 {
 		t.Fatalf("unexpected receipt: %+v", receipt)
 	}
+}
+
+func TestTaskLockExcludesConcurrentExecution(t *testing.T) {
+	root := t.TempDir()
+	first, err := acquireTaskLock(root, "same-task", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.release()
+	if _, err := acquireTaskLock(root, "same-task", 50*time.Millisecond); err == nil {
+		t.Fatal("expected busy task lock")
+	}
+}
+
+func TestDoctorReportsWorkspace(t *testing.T) {
+	report, err := Doctor(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report["status"] != "error" {
+		t.Fatalf("expected unbound temp directory to report error: %#v", report)
+	}
+}
+
+func TestPolicyMatchesSharedDocument(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "schemas", "runtime-policy.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shared map[string]any
+	if err := json.Unmarshal(raw, &shared); err != nil {
+		t.Fatal(err)
+	}
+	actual := policyDocument()
+	for _, key := range []string{"allowed_commands", "deny_tokens", "shell_operators", "sensitive_env_keys"} {
+		want, ok := shared[key].([]any)
+		if !ok {
+			t.Fatalf("shared policy field %s is not an array", key)
+		}
+		got := actual[key].([]string)
+		values := make([]string, len(want))
+		for i, value := range want {
+			values[i], ok = value.(string)
+			if !ok {
+				t.Fatalf("shared policy field %s contains non-string", key)
+			}
+		}
+		if !reflect.DeepEqual(got, values) {
+			t.Fatalf("policy mismatch for %s: got %#v want %#v", key, got, values)
+		}
+	}
+}
+
+func FuzzParseTask(f *testing.F) {
+	f.Add(testTask)
+	f.Add("# Task\n- task_id: x\n")
+	f.Fuzz(func(t *testing.T, raw string) {
+		_, _ = parseTask(raw)
+	})
 }

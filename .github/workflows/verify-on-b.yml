@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: codex-relay-verifier
+  group: code-relay-verifier
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import pathlib, subprocess
+          import pathlib, subprocess, shutil
           import re
           tasks = sorted(pathlib.Path('tasks').glob('*/task.md'))
           for task in tasks:
@@ -45,10 +45,12 @@ jobs:
               try:
                   subprocess.run(['git', 'worktree', 'add', '--detach', str(worktree), match.group(1)], check=True)
                   agent = pathlib.Path('bin/code-relay-agent')
-                  if agent.exists() and agent.is_file():
-                      result = subprocess.run([str(agent), 'run-task', task_id, '--root', '.', '--worktree', str(worktree)], check=False)
-                  else:
-                      result = subprocess.run(['python', '-m', 'code_relay.relay', '--root', '.', 'run-task', task_id, '--worktree', str(worktree)], check=False)
+                  if not (agent.exists() and agent.is_file()):
+                      agent_name = shutil.which('code-relay-agent')
+                      agent = pathlib.Path(agent_name) if agent_name else agent
+                  if not (agent.exists() and agent.is_file()):
+                      raise SystemExit('code-relay-agent is required on the verifier runner')
+                  result = subprocess.run([str(agent), 'run-task', task_id, '--root', '.', '--worktree', str(worktree)], check=False)
                   # run-task returns 2 for a valid failed/blocked receipt; the receipt is still required.
                   if not receipt.exists():
                       raise SystemExit(f'no receipt produced for {task_id}')

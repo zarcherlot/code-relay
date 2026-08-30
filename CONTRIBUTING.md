@@ -15,7 +15,10 @@ Run the complete test and compile checks from the repository root:
 
 ```powershell
 python -m unittest discover -s tests -v
-python -m compileall -q codex_mate code_relay codex_relay tests scripts
+python -m compileall -q code_relay tests scripts
+go test ./...
+go vet ./...
+python -m code_relay.relay --root . doctor --json
 ```
 
 When changing `.codex-plugin/plugin.json`, `.mcp.json`, or a Skill, also verify JSON and frontmatter before submitting.
@@ -24,7 +27,7 @@ When changing `.codex-plugin/plugin.json`, `.mcp.json`, or a Skill, also verify 
 
 - Explain the user-visible behavior and the security implications.
 - Add or update a focused test for protocol, binding, watcher, or receipt changes.
-- Keep commits narrow and describe any compatibility impact of changing the legacy `codex_mate` namespace.
+- Keep commits narrow and document user-visible protocol or storage changes.
 - Never include real invitation links, GitHub tokens, runner credentials, private repositories, or customer data.
 
 ## Design principles

@@ -4,17 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "code-relay"
-version = "0.4.0"
+version = "1.0.0"
 description = "Git-backed two-host Codex development and verification loop"
 requires-python = ">=3.10"
 
+[project.urls]
+Homepage = "https://github.com/zarcherlot/code-relay"
+Repository = "https://github.com/zarcherlot/code-relay"
+
 [project.scripts]
 code-relay = "code_relay.relay:main"
-codex-relay = "code_relay.relay:main"
-relay = "codex_relay.relay:main"
 code-relay-daemon = "code_relay.daemon:main"
-codex-relay-daemon = "code_relay.daemon:main"
-relay-daemon = "code_relay.daemon:main"
 
 [tool.setuptools.packages.find]
-include = ["codex_mate*", "codex_relay*", "code_relay*"]
+include = ["code_relay*"]

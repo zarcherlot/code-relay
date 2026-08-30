@@ -6,7 +6,7 @@ Code Relay moves source references, task instructions, validation commands, and 
 
 ## Current MVP boundaries
 
-- Invitations are short-lived bearer links by default. Set `CODE_RELAY_INVITE_SECRET` to the same 32+ character secret on A and B to add HMAC integrity verification; the legacy `CODEX_RELAY_INVITE_SECRET` remains accepted during migration. Anyone who obtains an unexpired unsigned link can otherwise attempt to join the encoded repository/ref. Do not paste invitations or secrets into public issues or logs.
+- Invitations are short-lived bearer links by default. Set `CODE_RELAY_INVITE_SECRET` to the same 32+ character secret on A and B to add HMAC integrity verification. Anyone who obtains an unexpired unsigned link can otherwise attempt to join the encoded repository/ref. Do not paste invitations or secrets into public issues or logs.
 - The verifier runtime allowlists common development executables and blocks several destructive command patterns, but this is defense-in-depth rather than a sandbox.
 - Use a dedicated low-privilege self-hosted runner and a separate worktree for validation.
 - Give GitHub tokens only the minimum contents/actions permissions required to fetch tasks and publish receipts.
@@ -26,3 +26,10 @@ Until a private security contact is configured for the project, use the reposito
 ## Future hardening
 
 Before production use, the project should add asymmetric signed invitations or a hosted authorization service, invitation revocation, per-project authorization, stronger process isolation, and an auditable event store. The optional HMAC mode is an integrity layer for controlled deployments, not a replacement for per-user authorization.
+
+## Runtime hardening in 1.0
+
+- The Go agent is the production verifier runtime. Python execution is an explicit development choice rather than a silent fallback.
+- Validation commands run as structured argv without a shell. The shared policy is in `schemas/runtime-policy.json` and is checked by both runtime test suites.
+- Task execution is serialized per `task_id`, invite nonces are consumed once by default, and webhook requests require JSON, signature validation when configured, bounded bodies, and rate limiting.
+- Configuration, task inbox files, and receipts use atomic writes and reject symlink targets. Use `code-relay-agent doctor --root <project>` before enabling a service.

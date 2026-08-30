@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Code Relay MCP launcher (legacy codex_relay_mcp.py remains supported)."""
+"""Code Relay MCP launcher."""
 import sys
 from pathlib import Path
 

@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/codex-relay/code-relay/internal/relay"
+	"github.com/zarcherlot/code-relay/internal/relay"
 )
+
+var version = "1.0.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -30,13 +32,22 @@ func main() {
 	var err error
 	switch os.Args[1] {
 	case "--version", "version":
-		fmt.Println("code-relay-agent 0.4.0")
+		fmt.Println("code-relay-agent " + version)
 		return
 	case "status":
 		var value any
 		value, err = relay.Status(root)
 		if err == nil {
 			printJSON(value)
+		}
+	case "doctor":
+		var value map[string]any
+		value, err = relay.Doctor(root)
+		if err == nil {
+			printJSON(value)
+			if value["status"] == "error" {
+				os.Exit(1)
+			}
 		}
 	case "validate-task":
 		if len(args) == 0 {
@@ -87,4 +98,6 @@ func main() {
 }
 
 func printJSON(value any) { data, _ := json.MarshalIndent(value, "", "  "); fmt.Println(string(data)) }
-func usage()              { fmt.Println("Code Relay agent: status | validate-task | run-task | watcher | daemon") }
+func usage() {
+	fmt.Println("Code Relay agent: status | doctor | validate-task | run-task | watcher | daemon")
+}

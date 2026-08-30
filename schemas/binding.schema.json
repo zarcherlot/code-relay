@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code-relay.dev/schemas/binding.schema.json",
+  "title": "Code Relay project binding",
+  "type": "object",
+  "required": ["schema_version", "repository", "ref"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "repository": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "ref": {"type": "string", "pattern": "^refs/heads/[A-Za-z0-9._/-]+$"},
+    "task_path": {"const": "tasks/**"},
+    "role": {"enum": ["orchestrator", "verifier"]},
+    "runtime": {"enum": ["go", "python"]},
+    "verifier_id": {"type": "string", "maxLength": 128},
+    "created_at": {"type": "string", "maxLength": 128},
+    "joined_at": {"type": "string", "maxLength": 128}
+  },
+  "additionalProperties": true
+}

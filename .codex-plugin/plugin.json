@@ -1,6 +1,6 @@
 {
   "name": "code-relay",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "description": "Branch-scoped orchestration and verification for Code Relay projects.",
   "author": {
     "name": "Code Relay"

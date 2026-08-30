@@ -1,0 +1,10 @@
+{
+  "allowed_commands": ["bash", "cargo", "cmd", "dotnet", "echo", "go", "node", "npm", "powershell", "pwsh", "py", "pytest", "python", "python3", "sh"],
+  "deny_tokens": ["rm -rf", "rmdir /s", "del /s", "format ", "shutdown", "git push", "git reset --hard", "curl | sh", "wget | sh", "invoke-webrequest", "pip install", "npm install"],
+  "shell_operators": ["&", "&&", ";", "<", ">", "|", "||"],
+  "sensitive_env_keys": ["CODEX_API_KEY", "CODE_RELAY_INVITE_SECRET", "CODE_RELAY_WEBHOOK_SECRET", "GH_TOKEN", "GITHUB_TOKEN", "OPENAI_API_KEY"],
+  "max_command_length": 4096,
+  "max_output_length": 4000,
+  "max_timeout_seconds": 3600,
+  "git_timeout_seconds": 30
+}

@@ -117,13 +117,15 @@ python -m code_relay.relay --root . run-task task-001
 python -m code_relay.relay --root . status --json
 ```
 
-可选的 Go 运行时支持 Linux 和 Windows：
+Go 运行时支持 Linux 和 Windows：
 
 ```powershell
 ./scripts/build-agent.ps1
 ```
 
-在目标机上使用 `code-relay-agent watcher --root .` 或 `code-relay-agent daemon --root . --role verifier`。设置 `CODE_RELAY_RUNTIME=go` 后，Python MCP 门面会自动选择 Go 运行时。
+在目标机上使用 `code-relay-agent watcher --root .` 或 `code-relay-agent daemon --root . --role verifier`。验证端默认使用 Go runtime；开发调试时才显式设置 `CODE_RELAY_RUNTIME=python`。
+
+排查主机环境可运行 `code-relay-agent doctor --root .` 或 `python -m code_relay.relay --root . doctor --json`。
 
 ## 安全边界
 

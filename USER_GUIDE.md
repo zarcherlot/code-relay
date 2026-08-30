@@ -30,12 +30,19 @@ receipts/<task_id>/receipt.md        # B 给人和 Codex 阅读的结果
 
 ### B 主机（验证端）
 
-B 用户安装同一个 Code Relay 插件，把 A 生成的加入链接粘贴到该工程的 Codex 中，并确认仓库、分支和权限。插件会生成 verifier 配置并启动 watcher。准备同一个 GitHub 仓库的 self-hosted runner，并添加标签 `codex-b`；runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
+B 用户安装同一个 Code Relay 插件，把 A 生成的加入链接粘贴到该工程的 Codex 中，并确认仓库、分支和权限。插件默认使用 `code-relay-agent` Go runtime，生成 verifier 配置并启动 watcher；开发调试时可显式选择 `runtime=python`。准备同一个 GitHub 仓库的 self-hosted runner，并添加标签 `codex-b`；runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
 
 如果暂时没有 GitHub runner，开发者可以在 B 的工作目录用内部调试命令启动 watcher（普通用户无需执行）：
 
 ```powershell
 python -m code_relay.daemon --root . --role verifier
+```
+
+排查主机环境时运行：
+
+```powershell
+python -m code_relay.relay --root . doctor --json
+code-relay-agent doctor --root .
 ```
 
 生产环境建议使用 workflow，因为它会根据任务里的 `source_commit` 创建隔离 worktree，避免验证到错误版本。
@@ -128,7 +135,7 @@ receipts/<task_id>/receipt.md
 ## 7. 安全建议
 
 - B runner 使用独立、低权限账号和独立 worktree。
-- 在 A、B 主机安全配置相同的 `CODE_RELAY_INVITE_SECRET`（至少 32 个字符），让邀请链接启用 HMAC 完整性校验；旧项目仍可使用 `CODEX_RELAY_INVITE_SECRET`；不要把该值写进 Git、task、receipt 或聊天记录。
+- 在 A、B 主机安全配置相同的 `CODE_RELAY_INVITE_SECRET`（至少 32 个字符），让邀请链接启用 HMAC 完整性校验；不要把该值写进 Git、task、receipt 或聊天记录。
 - GitHub Token 只授予仓库内容读写和 Actions 所需的最小权限。
 - 不要把 Token、密码或其他密钥写入 task、receipt 或日志。
 - 不要把未经审查的任意 shell 脚本放入 Validation Plan。

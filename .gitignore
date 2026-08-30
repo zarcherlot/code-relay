@@ -1,13 +1,10 @@
 __pycache__/
 *.py[cod]
-.codex-relay/*
-!.codex-relay/
-!.codex-relay/project.json
+*.tmp
 .code-relay/*
 !.code-relay/
 !.code-relay/project.json
 !.code-relay/verifier.json
-.codex-mate/
 dist/
 .gocache/
 .gomodcache/

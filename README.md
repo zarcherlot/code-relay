@@ -119,19 +119,23 @@ python -m code_relay.relay --root . run-task task-001
 python -m code_relay.relay --root . status --json
 ```
 
-The optional Go runtime can be built for Linux and Windows:
+The Go runtime can be built for Linux and Windows:
 
 ```powershell
 ./scripts/build-agent.ps1
 ```
 
-Use `code-relay-agent watcher --root .` or `code-relay-agent daemon --root . --role verifier` on a Target Host. Set `CODE_RELAY_RUNTIME=go` to let the Python MCP facade select it automatically.
+For a versioned release, run `./scripts/release.ps1`; it produces the three platform binaries, `release.json`, SBOM metadata, and `SHA256SUMS`.
+
+Use `code-relay-agent watcher --root .` or `code-relay-agent daemon --root . --role verifier` on a Target Host. The verifier defaults to the Go runtime; set `CODE_RELAY_RUNTIME=python` only for explicit development debugging.
+
+Run `code-relay-agent doctor --root .` or `python -m code_relay.relay --root . doctor --json` to diagnose a host without changing project state.
 
 ## Security and operating boundaries
 
 Code Relay is an MVP. Validation commands run without a shell, are allowlisted, have bounded output and timeouts, and destructive command patterns are blocked. Users must still review task content and runner permissions.
 
-Invitations are short-lived bearer links by default. Controlled deployments can set the same 32+ character `CODE_RELAY_INVITE_SECRET` on the Dev Host and Target Host to enable HMAC integrity checks. The legacy `CODEX_RELAY_INVITE_SECRET` remains accepted during migration. Per-user authorization and revocation still require a hosted control plane.
+Invitations are short-lived bearer links by default. Controlled deployments can set the same 32+ character `CODE_RELAY_INVITE_SECRET` on the Dev Host and Target Host to enable HMAC integrity checks. Per-user authorization and revocation still require a hosted control plane.
 
 Read [SECURITY.md](SECURITY.md) before exposing a runner or webhook, [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.
 

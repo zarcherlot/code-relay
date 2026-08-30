@@ -9,4 +9,4 @@ repository_root: .
 # role: verifier
 # runtime: go
 # Set CODE_RELAY_INVITE_SECRET on both A and B when signed invitation integrity
-# is required (32+ characters). CODEX_RELAY_INVITE_SECRET remains a fallback.
+# is required (32+ characters).

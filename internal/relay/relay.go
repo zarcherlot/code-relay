@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -19,15 +20,15 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
 const (
-	newMeta   = ".code-relay"
-	oldMeta   = ".codex-relay"
-	maxTask   = 1 << 20
-	maxOutput = 4000
-	maxQueue  = 50 << 20
+	newMeta  = ".code-relay"
+	maxTask  = 1 << 20
+	maxQueue = 50 << 20
 )
 
 var taskID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
@@ -64,18 +65,13 @@ type Receipt struct {
 }
 
 func meta(root string) string {
-	newPath, oldPath := filepath.Join(root, newMeta), filepath.Join(root, oldMeta)
-	if _, err := os.Stat(newPath); err == nil {
-		return newPath
-	}
-	if _, err := os.Stat(oldPath); err == nil {
-		return oldPath
-	}
-	return newPath
+	return filepath.Join(root, newMeta)
 }
-func bothMeta(root string) []string { return []string{meta(root), filepath.Join(root, oldMeta)} }
-func now() string                   { return time.Now().UTC().Truncate(time.Second).Format(time.RFC3339) }
+func now() string { return time.Now().UTC().Truncate(time.Second).Format(time.RFC3339) }
 func atomicJSON(path string, value any) error {
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("refusing to replace symlink")
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
@@ -88,9 +84,32 @@ func atomicJSON(path string, value any) error {
 	if err = os.WriteFile(tmp, data, 0600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	defer os.Remove(tmp)
+	if err = os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(path))
+}
+
+func syncDir(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer dir.Close()
+	if err := dir.Sync(); err != nil {
+		return nil
+	}
+	return nil
 }
 func readJSON(path string, value any) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || info.Size() > maxTask {
+		return errors.New("refusing unsafe JSON file")
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -106,6 +125,7 @@ func parseTask(raw string) (Task, error) {
 	meta := map[string]string{}
 	section := ""
 	scanner := bufio.NewScanner(strings.NewReader(raw))
+	scanner.Buffer(make([]byte, 64*1024), maxTask)
 	for scanner.Scan() {
 		line := scanner.Text()
 		trim := strings.TrimSpace(line)
@@ -116,7 +136,11 @@ func parseTask(raw string) (Task, error) {
 		if strings.HasPrefix(trim, "-") {
 			item := strings.TrimSpace(strings.TrimPrefix(trim, "-"))
 			if i := strings.Index(item, ":"); i > 0 && section == "" {
-				meta[strings.TrimSpace(item[:i])] = strings.TrimSpace(item[i+1:])
+				key, value := strings.TrimSpace(item[:i]), strings.TrimSpace(item[i+1:])
+				if _, exists := meta[key]; exists {
+					return Task{}, fmt.Errorf("task.md 元数据重复: %s", key)
+				}
+				meta[key] = value
 			}
 			if section == "Validation Plan" {
 				item = strings.TrimSpace(strings.TrimLeft(item, "0123456789. "))
@@ -135,6 +159,9 @@ func parseTask(raw string) (Task, error) {
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return Task{}, fmt.Errorf("无法读取 task.md: %w", err)
+	}
 	t.ID, t.SourceCommit, t.Target, t.Objective = meta["task_id"], meta["source_commit"], meta["target"], meta["objective"]
 	if !taskID.MatchString(t.ID) {
 		return t, fmt.Errorf("非法 task_id: %s", t.ID)
@@ -142,8 +169,13 @@ func parseTask(raw string) (Task, error) {
 	if !commitSHA.MatchString(t.SourceCommit) {
 		return t, errors.New("source_commit 必须是 7-64 位十六进制 SHA")
 	}
-	if t.Target == "" || t.Objective == "" || len(t.Plan) == 0 || len(t.Expected) == 0 {
+	if t.Target == "" || len(t.Target) > maxFieldLength || t.Objective == "" || len(t.Objective) > maxFieldLength || len(t.Plan) == 0 || len(t.Plan) > 100 || len(t.Expected) == 0 || len(t.Expected) > 100 {
 		return t, errors.New("task.md 缺少 target/objective/Validation Plan/Expected Results")
+	}
+	for _, item := range append(append([]string{}, t.Plan...), t.Expected...) {
+		if len(item) == 0 || len(item) > maxFieldLength {
+			return t, errors.New("Validation Plan 或 Expected Results 项非法或过长")
+		}
 	}
 	return t, nil
 }
@@ -158,10 +190,10 @@ func ValidateTaskFile(path string) error {
 }
 
 func parseCommand(command string) ([]string, error) {
-	if len(command) > 4096 {
+	if len(command) > maxCommandLength {
 		return nil, errors.New("命令超过 4096 字符限制")
 	}
-	for _, op := range []string{"&&", "||", "|", ";", "&", ">", "<"} {
+	for _, op := range shellOperators {
 		if strings.Contains(command, op) {
 			return nil, errors.New("不允许使用 shell 管道、重定向或串联操作符")
 		}
@@ -210,13 +242,12 @@ func parseCommand(command string) ([]string, error) {
 	if len(out) == 0 {
 		return nil, errors.New("命令为空")
 	}
-	allowed := map[string]bool{"python": true, "python3": true, "pytest": true, "py": true, "node": true, "npm": true, "go": true, "cargo": true, "dotnet": true, "bash": true, "sh": true, "pwsh": true, "powershell": true, "cmd": true, "echo": true}
 	name := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(out[0], ".exe"), ".cmd"), ".bat"))
-	if strings.ContainsAny(name, `/\\`) || !allowed[name] {
+	if strings.ContainsAny(name, `/\\`) || !allowedCommands[name] {
 		return nil, fmt.Errorf("不允许的可执行文件: %s", out[0])
 	}
 	lower := strings.ToLower(strings.Join(out, " "))
-	for _, denied := range []string{"rm -rf", "rmdir /s", "del /s", "format ", "shutdown", "git push", "git reset --hard", "curl | sh", "wget | sh", "invoke-webrequest", "pip install", "npm install"} {
+	for _, denied := range deniedTokens {
 		if strings.Contains(lower, denied) {
 			return nil, errors.New("命令被安全策略拦截")
 		}
@@ -233,7 +264,7 @@ func runCommand(argv []string, cwd string, timeout int) (int, string, bool, erro
 	for _, e := range env {
 		key := strings.SplitN(e, "=", 2)[0]
 		switch key {
-		case "GITHUB_TOKEN", "GH_TOKEN", "CODE_RELAY_INVITE_SECRET", "CODEX_RELAY_INVITE_SECRET", "CODEX_API_KEY", "OPENAI_API_KEY":
+		case "GITHUB_TOKEN", "GH_TOKEN", "CODE_RELAY_INVITE_SECRET", "CODE_RELAY_WEBHOOK_SECRET", "CODEX_API_KEY", "OPENAI_API_KEY":
 			continue
 		}
 		filtered = append(filtered, e)
@@ -250,11 +281,18 @@ func runCommand(argv []string, cwd string, timeout int) (int, string, bool, erro
 	case <-time.After(time.Duration(timeout) * time.Second):
 		timedOut = true
 		killProcessTree(cmd)
-		err = <-done
+		select {
+		case err = <-done:
+		case <-time.After(5 * time.Second):
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			err = <-done
+		}
 	}
 	text := output.Bytes()
-	if len(text) > maxOutput {
-		text = text[len(text)-maxOutput:]
+	if len(text) > maxOutputLength {
+		text = text[len(text)-maxOutputLength:]
 	}
 	if timedOut {
 		return -1, string(text), true, nil
@@ -290,6 +328,11 @@ func RunTask(root, id string, timeout int, worktree string) (Receipt, error) {
 	if info, statErr := os.Stat(cwdAbs); statErr != nil || !info.IsDir() {
 		return blocked(task, "验证工作目录不存在或不是目录: "+cwdAbs), nil
 	}
+	lock, lockErr := acquireTaskLock(root, task.ID, 10*time.Second)
+	if lockErr != nil {
+		return Receipt{}, lockErr
+	}
+	defer lock.release()
 	r := Receipt{TaskID: task.ID, SourceCommit: task.SourceCommit, Status: "passed", VerifiedAt: now(), Environment: map[string]string{"platform": runtime.GOOS + "/" + runtime.GOARCH, "go": runtime.Version(), "cwd": cwdAbs}}
 	for i, item := range task.Plan {
 		argv, e := parseCommand(item)
@@ -301,7 +344,7 @@ func RunTask(root, id string, timeout int, worktree string) (Receipt, error) {
 			continue
 		}
 		started := time.Now()
-		code, out, to, e := runCommand(argv, cwdAbs, max(1, min(timeout, 3600)))
+		code, out, to, e := runCommand(argv, cwdAbs, max(1, min(timeout, maxTimeout)))
 		if e != nil {
 			r.Status = "failed"
 			r.Checks = append(r.Checks, Check{Name: name, Expected: "命令可以启动并完成", Actual: e.Error(), Status: "failed"})
@@ -340,7 +383,29 @@ func PersistReceipt(root string, receipt Receipt) error {
 	for _, check := range receipt.Checks {
 		fmt.Fprintf(&b, "- %s: %s (expected: %s; actual: %s)\n", check.Name, check.Status, check.Expected, check.Actual)
 	}
-	return os.WriteFile(filepath.Join(dir, "receipt.md"), []byte(b.String()), 0600)
+	return atomicText(filepath.Join(dir, "receipt.md"), b.String())
+}
+
+func atomicText(path, value string) error {
+	return atomicJSONText(path, []byte(value))
+}
+
+func atomicJSONText(path string, data []byte) error {
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("refusing to replace symlink")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	tmp := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(path))
 }
 func blocked(t Task, actual string) Receipt {
 	return Receipt{TaskID: t.ID, SourceCommit: t.SourceCommit, Status: "blocked", Checks: []Check{{Name: "验证工作目录", Expected: "位于仓库目录内且存在", Actual: actual, Status: "blocked"}}, Risks: []string{"验证工作目录必须位于绑定工程内"}, NextActions: []string{"选择工程内的隔离 worktree 后重新执行"}, VerifiedAt: now(), Environment: map[string]string{"platform": runtime.GOOS + "/" + runtime.GOARCH}}
@@ -385,13 +450,93 @@ func Status(root string) (any, error) {
 		status := "task_published"
 		rp := filepath.Join(root, "receipts", t.ID, "receipt.json")
 		var rec Receipt
-		if readJSON(rp, &rec) == nil {
+		if readJSON(rp, &rec) == nil && validateReceipt(rec, t) == nil {
 			status = rec.Status
+		} else if _, statErr := os.Stat(rp); statErr == nil {
+			status = "invalid"
 		}
 		rows = append(rows, map[string]any{"task_id": t.ID, "source_commit": t.SourceCommit, "target": t.Target, "status": status})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i]["task_id"].(string) < rows[j]["task_id"].(string) })
 	return rows, nil
+}
+
+func validateReceipt(receipt Receipt, task Task) error {
+	if receipt.TaskID != task.ID || receipt.SourceCommit != task.SourceCommit {
+		return errors.New("receipt task binding mismatch")
+	}
+	if receipt.Status != "passed" && receipt.Status != "failed" && receipt.Status != "blocked" {
+		return errors.New("invalid receipt status")
+	}
+	if len(receipt.Checks) > 100 {
+		return errors.New("too many receipt checks")
+	}
+	for _, check := range receipt.Checks {
+		if check.Status != "passed" && check.Status != "failed" && check.Status != "blocked" {
+			return errors.New("invalid receipt check status")
+		}
+		if len(check.Name) > maxFieldLength || len(check.Expected) > maxFieldLength || len(check.Actual) > maxFieldLength {
+			return errors.New("receipt field too long")
+		}
+	}
+	return nil
+}
+
+func Doctor(root string) (map[string]any, error) {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	checks := []map[string]string{}
+	add := func(name, status, detail string) {
+		checks = append(checks, map[string]string{"name": name, "status": status, "detail": detail})
+	}
+	if info, statErr := os.Stat(rootAbs); statErr != nil || !info.IsDir() {
+		add("root", "error", "工程根目录不存在")
+		return map[string]any{"status": "error", "root": rootAbs, "checks": checks}, nil
+	}
+	add("root", "ok", rootAbs)
+	if out, gitErr := runGit(rootAbs, gitTimeout, "rev-parse", "--show-toplevel"); gitErr == nil && filepath.Clean(strings.TrimSpace(string(out))) == filepath.Clean(rootAbs) {
+		add("git", "ok", "当前目录是 Git 工程根目录")
+	} else {
+		add("git", "error", "无法识别 Git 工程根目录")
+	}
+	metadata := filepath.Join(rootAbs, newMeta)
+	if info, statErr := os.Stat(metadata); statErr == nil && info.IsDir() {
+		add("metadata", "ok", metadata)
+		if file, openErr := os.OpenFile(filepath.Join(metadata, ".doctor-write-test"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600); openErr == nil {
+			_ = file.Close()
+			_ = os.Remove(filepath.Join(metadata, ".doctor-write-test"))
+			add("metadata-write", "ok", "元数据目录可写")
+		} else {
+			add("metadata-write", "error", openErr.Error())
+		}
+	} else {
+		add("metadata", "warning", "尚未初始化 .code-relay/")
+	}
+	if _, projectErr := os.Stat(filepath.Join(metadata, "project.json")); projectErr == nil {
+		add("binding", "ok", "发现 orchestrator 绑定")
+	} else if _, verifierErr := os.Stat(filepath.Join(metadata, "verifier.json")); verifierErr == nil {
+		add("binding", "ok", "发现 verifier 绑定")
+	} else {
+		add("binding", "warning", "尚未发现绑定配置")
+	}
+	if out, remoteErr := runGit(rootAbs, gitTimeout, "config", "--get", "remote.origin.url"); remoteErr == nil && strings.TrimSpace(string(out)) != "" {
+		add("remote", "ok", strings.TrimSpace(string(out)))
+	} else {
+		add("remote", "warning", "未配置 origin remote")
+	}
+	status := "ok"
+	for _, check := range checks {
+		if check["status"] == "error" {
+			status = "error"
+			break
+		}
+		if check["status"] == "warning" {
+			status = "warning"
+		}
+	}
+	return map[string]any{"status": status, "root": rootAbs, "checks": checks}, nil
 }
 
 func Watch(root string, interval float64) error {
@@ -401,6 +546,7 @@ func Watch(root string, interval float64) error {
 	for {
 		if err := syncTasks(root); err != nil {
 			fmt.Fprintln(os.Stderr, err)
+			logEvent("sync_error", map[string]any{"runtime": "go"})
 		}
 		time.Sleep(time.Duration(interval * float64(time.Second)))
 	}
@@ -410,18 +556,20 @@ func syncTasks(root string) error {
 	if err := readJSON(filepath.Join(meta(root), "verifier.json"), &cfg); err != nil {
 		return err
 	}
+	if version, ok := cfg["schema_version"].(float64); !ok || version != 1 {
+		return errors.New("invalid verifier schema_version")
+	}
+	if repository, ok := cfg["repository"].(string); !ok || strings.TrimSpace(repository) == "" || len(repository) > 2048 {
+		return errors.New("invalid verifier repository")
+	}
 	ref, _ := cfg["ref"].(string)
 	if !branchRef.MatchString(ref) {
 		return errors.New("invalid verifier ref")
 	}
-	fetch := exec.Command("git", "fetch", "--quiet", "origin", ref)
-	fetch.Dir = root
-	if err := fetch.Run(); err != nil {
+	if _, err := runGit(root, gitTimeout, "fetch", "--quiet", "origin", ref); err != nil {
 		return err
 	}
-	tree := exec.Command("git", "ls-tree", "-r", "--name-only", "FETCH_HEAD", "--", "tasks")
-	tree.Dir = root
-	out, err := tree.Output()
+	out, err := runGit(root, gitTimeout, "ls-tree", "-r", "--name-only", "FETCH_HEAD", "--", "tasks")
 	if err != nil {
 		return err
 	}
@@ -430,9 +578,7 @@ func syncTasks(root string) error {
 		if len(parts) != 3 || parts[0] != "tasks" || parts[2] != "task.md" || !taskID.MatchString(parts[1]) {
 			continue
 		}
-		show := exec.Command("git", "show", "FETCH_HEAD:"+line)
-		show.Dir = root
-		shown, er := show.Output()
+		shown, er := runGit(root, gitTimeout, "show", "FETCH_HEAD:"+line)
 		if er != nil || len(shown) > maxTask {
 			continue
 		}
@@ -440,21 +586,39 @@ func syncTasks(root string) error {
 		if _, er = os.Stat(dest); er == nil {
 			continue
 		}
-		if er = os.MkdirAll(filepath.Dir(dest), 0700); er == nil {
-			er = os.WriteFile(dest, shown, 0600)
-		}
-		if er != nil {
+		if er = atomicJSONText(dest, shown); er != nil {
 			return er
 		}
 	}
 	return nil
 }
 
+func runGit(root string, timeoutSeconds int, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("git operation timed out after %ds: %s", timeoutSeconds, strings.Join(args, " "))
+	}
+	if err != nil {
+		if exit, ok := err.(*exec.ExitError); ok && len(exit.Stderr) > 0 {
+			return nil, errors.New(strings.TrimSpace(string(exit.Stderr)))
+		}
+		return nil, err
+	}
+	return out, nil
+}
+
 func Daemon(root, role string, interval float64, addr string) error {
 	if role != "orchestrator" && role != "verifier" {
 		return errors.New("role must be orchestrator or verifier")
 	}
-	d := &daemon{root: root, role: role}
+	if interval < 1 || interval > 3600 {
+		return errors.New("poll interval must be 1..3600")
+	}
+	d := &daemon{root: root, role: role, requests: map[string][]time.Time{}}
 	stopWatcher := make(chan struct{})
 	if role == "verifier" {
 		go func() {
@@ -473,11 +637,12 @@ func Daemon(root, role string, interval float64, addr string) error {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", d.handle)
-	server := &http.Server{Addr: addr, Handler: mux}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() { <-ctx.Done(); close(stopWatcher); _ = server.Shutdown(context.Background()) }()
 	fmt.Println("Code Relay daemon listening on", addr)
+	logEvent("daemon_started", map[string]any{"role": role, "addr": addr})
 	err := server.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
@@ -485,20 +650,64 @@ func Daemon(root, role string, interval float64, addr string) error {
 	return err
 }
 
-type daemon struct{ root, role string }
+type daemon struct {
+	root, role string
+	mu         sync.Mutex
+	requests   map[string][]time.Time
+}
+
+func (d *daemon) allowRequest(client string) bool {
+	now := time.Now()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	recent := d.requests[client][:0]
+	for _, stamp := range d.requests[client] {
+		if now.Sub(stamp) < time.Minute {
+			recent = append(recent, stamp)
+		}
+	}
+	if len(recent) >= 60 {
+		d.requests[client] = recent
+		return false
+	}
+	d.requests[client] = append(recent, now)
+	return true
+}
 
 func (d *daemon) handle(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != http.MethodPost || r.URL.Path != "/" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	client := r.RemoteAddr
+	if host, _, splitErr := net.SplitHostPort(r.RemoteAddr); splitErr == nil {
+		client = host
+	}
+	if !d.allowRequest(client) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
+	contentType := strings.ToLower(strings.Split(r.Header.Get("Content-Type"), ";")[0])
+	if contentType != "application/json" {
+		w.WriteHeader(http.StatusUnsupportedMediaType)
 		return
 	}
 	if r.ContentLength > 1<<20 {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(r.Body, (1<<20)+1))
 	if err != nil {
 		w.WriteHeader(400)
+		return
+	}
+	if len(body) > 1<<20 {
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		return
+	}
+	var payload any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	secret := os.Getenv("CODE_RELAY_WEBHOOK_SECRET")
@@ -515,6 +724,8 @@ func (d *daemon) handle(w http.ResponseWriter, r *http.Request) {
 	m := meta(d.root)
 	_ = os.MkdirAll(m, 0700)
 	delivery := r.Header.Get("X-GitHub-Delivery")
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if delivery != "" {
 		var deliveries []string
 		_ = readJSON(filepath.Join(m, "deliveries.json"), &deliveries)

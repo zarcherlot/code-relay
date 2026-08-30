@@ -13,12 +13,14 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from codex_mate.daemon import RelayDaemon, webhook_server
-from codex_mate.binding import bind_project, create_invite, decode_invite, join_verifier, provision_project, start_watcher, stop_watcher, watcher_status
-from codex_mate.mcp_server import handle
-from codex_mate.protocol import ProtocolError, Task
-from codex_mate.relay import main
-from codex_mate.verifier import run_task
+from code_relay.daemon import RelayDaemon, webhook_server
+from code_relay.binding import bind_project, create_invite, decode_invite, join_verifier, provision_project, start_watcher, stop_watcher, watcher_status
+from code_relay.mcp_server import handle
+from code_relay.protocol import ProtocolError, Task
+from code_relay.relay import main
+from code_relay.verifier import run_task
+from code_relay.diagnostics import doctor
+from code_relay.policy import policy_document, repository_policy_path
 
 
 TASK = """# Task
@@ -68,12 +70,12 @@ class MvpTests(unittest.TestCase):
             daemon = RelayDaemon(root, "orchestrator")
             self.assertEqual(len(daemon.scan()), 1)
             self.assertEqual(len(daemon.scan()), 0)
-            self.assertTrue((root / ".codex-relay/events.jsonl").exists())
+            self.assertTrue((root / ".code-relay/events.jsonl").exists())
 
     def test_receipt_binding_is_strict(self):
         task = Task.from_markdown(TASK)
         with self.assertRaises(ProtocolError):
-            from codex_mate.protocol import validate_receipt
+            from code_relay.protocol import validate_receipt
             validate_receipt({"task_id": "task-test", "source_commit": "wrong", "status": "passed", "checks": []}, task)
 
     def test_unsafe_command_is_blocked(self):
@@ -97,14 +99,14 @@ class MvpTests(unittest.TestCase):
             subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
             subprocess.run(["git", "remote", "add", "origin", "https://github.com/acme/demo.git"], cwd=root, check=True)
             (root / "README.md").write_text("demo", encoding="utf-8")
-            with patch.dict(os.environ, {"CODEX_RELAY_INVITE_SECRET": "s" * 32}):
+            with patch.dict(os.environ, {"CODE_RELAY_INVITE_SECRET": "s" * 32}):
                 provision_project(root, "orchestrator")
                 invite = create_invite(root)
                 self.assertEqual(decode_invite(invite["url"])["ref"], "refs/heads/main")
                 token = invite["url"].rsplit("/", 1)[-1]
                 payload = json.loads(base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode())
                 payload["ref"] = "refs/heads/other"
-                forged = "codex-relay://join/" + base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
+                forged = "code-relay://join/" + base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
                 with self.assertRaises(ProtocolError):
                     decode_invite(forged)
 
@@ -128,7 +130,38 @@ class MvpTests(unittest.TestCase):
                 self.assertEqual(connection.getresponse().status, 202)
                 connection.close()
             server.shutdown(); server.server_close()
-            self.assertEqual(len((root / ".codex-relay/events.jsonl").read_text(encoding="utf-8").splitlines()), 1)
+            self.assertEqual(len((root / ".code-relay/events.jsonl").read_text(encoding="utf-8").splitlines()), 1)
+
+    def test_webhook_rejects_non_json_and_rate_limits(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            daemon = RelayDaemon(root, "orchestrator")
+            server = webhook_server(root, None, 0, daemon)
+            thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+            port = server.server_address[1]
+            connection = http.client.HTTPConnection("127.0.0.1", port)
+            connection.request("POST", "/", body=b"{}", headers={"Content-Type": "text/plain"})
+            self.assertEqual(connection.getresponse().status, 415)
+            connection.close()
+            server.shutdown(); server.server_close()
+
+    def test_event_hook_requires_structured_argv(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            with self.assertRaises(ValueError):
+                RelayDaemon(root, "orchestrator", on_event="echo unsafe && whoami")
+            daemon = RelayDaemon(root, "orchestrator", on_event='["echo", "safe"]')
+            self.assertEqual(daemon.on_event, ["echo", "safe"])
+
+    def test_policy_document_matches_schema_contract(self):
+        data = json.loads(repository_policy_path().read_text(encoding="utf-8"))
+        self.assertEqual(data, policy_document())
+
+    def test_doctor_reports_unbound_workspace(self):
+        with tempfile.TemporaryDirectory() as folder:
+            report = doctor(Path(folder))
+            self.assertEqual(report["status"], "error")
+            self.assertTrue(any(item["name"] == "git" for item in report["checks"]))
 
     def test_branch_scoped_binding_and_join_link(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -144,9 +177,9 @@ class MvpTests(unittest.TestCase):
             self.assertEqual(project["repository"], "https://github.com/acme/demo")
             self.assertTrue((root / ".github/workflows/verify-on-b.yml").exists())
             invite = create_invite(root, 30)
-            joined = join_verifier(root, invite["url"])
+            joined = join_verifier(root, invite["url"], runtime="python")
             self.assertEqual(joined["repository"], project["repository"])
-            running = handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "join_verifier", "arguments": {"root": str(root), "url": invite["url"]}}})
+            running = handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "join_verifier", "arguments": {"root": str(root), "url": invite["url"], "runtime": "python"}}})
             self.assertIn('"status": "running"', running["result"]["content"][0]["text"])
             stop_watcher(root)
             self.assertEqual(watcher_status(root)["status"], "stopped")
@@ -174,7 +207,7 @@ class MvpTests(unittest.TestCase):
             daemon = RelayDaemon(verifier, "verifier")
             events = daemon.scan()
             self.assertEqual(events[0]["path"], "tasks/task-remote/task.md")
-            self.assertTrue((verifier / ".codex-relay/inbox/tasks/task-remote/task.md").exists())
+            self.assertTrue((verifier / ".code-relay/inbox/tasks/task-remote/task.md").exists())
 
     def test_join_from_empty_codex_workspace_clones_and_bootstraps(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -194,11 +227,11 @@ class MvpTests(unittest.TestCase):
             subprocess.run(["git", "commit", "-qm", "relay"], cwd=source, check=True)
             subprocess.run(["git", "push", "-q", "origin", "main"], cwd=source, check=True)
             invite = create_invite(source, 30)
-            response = handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "join_verifier", "arguments": {"root": str(empty), "url": invite["url"], "poll_interval": 1}}})
+            response = handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "join_verifier", "arguments": {"root": str(empty), "url": invite["url"], "poll_interval": 1, "runtime": "python"}}})
             self.assertNotIn("error", response)
             self.assertEqual(response["result"]["structuredContent"]["repository"], str(bare)[:-4])
-            self.assertTrue((empty / ".codex-relay/verifier.json").exists())
-            self.assertTrue((empty / ".codex/skills/codex-relay-verifier/SKILL.md").exists())
+            self.assertTrue((empty / ".code-relay/verifier.json").exists())
+            self.assertTrue((empty / ".codex/skills/code-relay-verifier/SKILL.md").exists())
             stop_watcher(empty)
 
 

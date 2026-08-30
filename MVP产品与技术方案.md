@@ -39,7 +39,7 @@ B Codex 自动完成：
 
 ## 3. 产品形态
 
-MVP 不做独立 Web 控制台，形态只有一个 Codex Plugin（CLI/daemon 是插件的内部 runtime）：
+MVP 不做独立 Web 控制台，形态只有一个 Codex Plugin（CLI/Go daemon 是插件的内部 runtime）：
 
 ```text
 Code Relay Plugin
@@ -75,13 +75,13 @@ role: verifier
       ├── receipts/task-xxx/receipt.json
       └── receipts/task-xxx/receipt.md
           ↓ GitHub push / Actions
- B Code Relay Plugin + watcher + Codex
+ B Code Relay Plugin + Go watcher + Codex
   ├─ 发现任务
   ├─ 执行验证
   └─ 推送回执
 ```
 
-MVP 使用 GitHub Actions self-hosted runner 触发 B，B 不需要公网入站 Webhook。若需要 A 实时收到事件，A 的 `relay daemon` 订阅 GitHub Webhook；开发阶段可先用短轮询替代。
+MVP 使用 GitHub Actions self-hosted runner 触发 B，B 不需要公网入站 Webhook。若需要 A 实时收到事件，A 的 `code-relay-agent daemon` 订阅 GitHub Webhook；开发阶段可先用短轮询替代。
 
 ### 4.1 工程/分支绑定
 
