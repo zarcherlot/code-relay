@@ -4,6 +4,10 @@
 
 The Codex Relay logo is the final red wax-seal coding-agent mark in [`assets/icon.png`](assets/icon.png).
 
+![Codex Relay workflow](assets/overview.png)
+
+Codex Relay carries a task from the development host to the target host and returns a validated, auditable receipt for the same repository branch.
+
 Codex Relay is an open-source Codex plugin for a branch-scoped development and verification loop between two hosts:
 
 - **A / orchestrator** develops in Codex, publishes a task, and analyzes the result.
