@@ -203,7 +203,7 @@ func (s *OAuthService) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := s.exchangeCode(r.Context(), code, state.Verifier)
 	if err != nil {
-		http.Error(w, "GitHub OAuth exchange failed", http.StatusBadGateway)
+		http.Error(w, "GitHub OAuth exchange failed: "+safeOAuthError(err), http.StatusBadGateway)
 		return
 	}
 	user, err := s.githubUser(r.Context(), token)
@@ -396,4 +396,12 @@ func safeNext(value string) string {
 func methodNotAllowed(w http.ResponseWriter, allowed string) {
 	w.Header().Set("Allow", allowed)
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+func safeOAuthError(err error) string {
+	message := strings.Join(strings.Fields(err.Error()), " ")
+	if len(message) > 256 {
+		return message[:256]
+	}
+	return message
 }

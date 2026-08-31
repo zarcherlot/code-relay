@@ -86,3 +86,44 @@ func TestOAuthRejectsStateReplayOrMismatch(t *testing.T) {
 		t.Fatalf("expected state rejection, got %d", res.Code)
 	}
 }
+
+func TestOAuthExchangeErrorIsActionable(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login/oauth/access_token" {
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":             "incorrect_client_credentials",
+				"error_description": "The client credentials are incorrect",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer provider.Close()
+
+	service, err := NewOAuthService(OAuthConfig{
+		ClientID:       "client",
+		ClientSecret:   "secret",
+		RedirectURL:    "https://relay.example/auth/github/callback",
+		SessionSecret:  strings.Repeat("s", 32),
+		AppSlug:        "code-relay",
+		GitHubOAuthURL: provider.URL,
+		GitHubAPIURL:   provider.URL,
+		SecureCookies:  false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := httptest.NewRecorder()
+	service.ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/auth/github", nil))
+	location, err := url.Parse(start.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callback := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/auth/github/callback?code=abc&state="+url.QueryEscape(location.Query().Get("state")), nil)
+	request.AddCookie(start.Result().Cookies()[0])
+	service.ServeHTTP(callback, request)
+	if callback.Code != http.StatusBadGateway || !strings.Contains(callback.Body.String(), "incorrect_client_credentials") {
+		t.Fatalf("expected actionable OAuth error, got %d %q", callback.Code, callback.Body.String())
+	}
+}
