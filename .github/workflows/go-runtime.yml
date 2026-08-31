@@ -1,6 +1,7 @@
 name: Code Relay Go runtime
 
 on:
+  workflow_dispatch:
   push:
     tags-ignore:
       - "v*.*.*"
