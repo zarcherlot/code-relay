@@ -102,7 +102,11 @@ jobs:
         run: |
           cd dist
           sha256sum -c SHA256SUMS
-          test "$(./code-relay-agent-linux-amd64 version)" = "code-relay-agent 2.0.0"
+          expected_version="$(jq -er '.version | split("+")[0]' ../.codex-plugin/plugin.json)"
+          actual_version="$(./code-relay-agent-linux-amd64 version)"
+          echo "Expected: code-relay-agent ${expected_version}"
+          echo "Actual:   ${actual_version}"
+          test "$actual_version" = "code-relay-agent ${expected_version}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: code-relay-agent
