@@ -71,6 +71,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
 默认的 `dist/plugin` 输出路径，这样仓库内的 marketplace 配置无需修改；不需要
 手工编辑 marketplace JSON，也不需要执行 `codex plugin marketplace add`。
 
+如果本机还没有源码工程，请先按[本机安装运行手册](deploy/LOCAL-INSTALL-RUNBOOK.md)
+拉取仓库并安装 Git、PowerShell 7 和 Go 1.26+。
+
 ## 核心能力
 
 - 分支级项目绑定和短时加入链接。
@@ -97,6 +100,7 @@ go build ./cmd/code-relay-agent
 
 - [English README](README.md)
 - [用户指南](USER_GUIDE.md)
+- [本机安装运行手册](deploy/LOCAL-INSTALL-RUNBOOK.md)
 - [部署与运行手册](deploy/RUNBOOK.md)
 - [安全说明](SECURITY.md)
 - [贡献指南](CONTRIBUTING.md)

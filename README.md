@@ -69,7 +69,8 @@ Restart the ChatGPT desktop app, open `Plugins Directory`, choose
 `Code Relay (Local)` → `Code Relay` → `Install`, and start a new chat to test it.
 Keep the default `dist/plugin` output so the checked-in marketplace path remains
 valid. No manual marketplace JSON or `codex plugin marketplace add` command is
-required.
+required. For a fresh machine, see the [local desktop install runbook](deploy/LOCAL-INSTALL-RUNBOOK.md)
+for cloning the repository and installing Git, PowerShell 7, and Go 1.26+ first.
 
 ## Core capabilities
 
@@ -97,6 +98,7 @@ Build the bundled agent for the current platform with `./scripts/build-agent.ps1
 
 - [中文 README](README.zh-CN.md)
 - [User guide](USER_GUIDE.md)
+- [Local desktop install runbook](deploy/LOCAL-INSTALL-RUNBOOK.md)
 - [Deployment and runbook](deploy/RUNBOOK.md)
 - [Security](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)

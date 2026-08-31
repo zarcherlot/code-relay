@@ -18,6 +18,9 @@ need Go at runtime.
 
 ## Local/repository installation
 
+For the complete operator procedure, see
+[the local desktop install runbook](deploy/LOCAL-INSTALL-RUNBOOK.md).
+
 The repository includes `.agents/plugins/marketplace.json` with the package path
 already wired. A first-time local install is therefore just:
 

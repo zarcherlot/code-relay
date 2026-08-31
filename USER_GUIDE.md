@@ -22,7 +22,33 @@ receipts/<task_id>/receipt.md        # B 给人和 Codex 阅读的结果
 
 ## 2. 一次性准备
 
-普通用户只需从 Codex 插件入口安装 **Code Relay**。插件直接启动 Go `code-relay-agent`，不需要安装 Python 或其他语言运行时。
+普通用户可以直接从 Codex 插件入口安装 **Code Relay**。如果使用本仓库进行
+桌面版本地安装，请先完成下面的打包步骤；打包后的插件直接启动原生 Go
+`code-relay-agent`，运行时不需要安装 Python、Go 或其他语言运行时。
+
+### 从源码仓库进行本地安装
+
+仓库已包含 `.agents/plugins/marketplace.json`，不需要手工创建 marketplace。
+在仓库根目录执行：
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\package-plugin.ps1 `
+  -Output .\dist\plugin
+```
+
+这一步只负责把源码编译成当前系统/架构的插件包；从源码构建需要 Go。若已
+获得预构建的 `dist/plugin`，可直接跳过。随后：
+
+1. 重启 ChatGPT 桌面版。
+2. 打开 `Plugins Directory`（部分账号显示为 `Plugins` 或 `Apps`）。
+3. 选择 `Code Relay (Local)` → `Code Relay` → `Install`。
+4. 新建聊天，确认插件可以被调用。
+
+保持默认的 `dist/plugin` 输出路径即可，不需要执行
+`codex plugin marketplace add`。更改输出目录时，才需要同步修改
+`.agents/plugins/marketplace.json` 的 `source.path`。从零开始准备源码和依赖时，
+请参阅[本机安装运行手册](deploy/LOCAL-INSTALL-RUNBOOK.md)。
 
 ### A 主机（编排端）
 
