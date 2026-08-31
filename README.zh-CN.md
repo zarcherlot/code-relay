@@ -152,6 +152,14 @@ marketplace 文件。
 如果只拿到已经生成的 `dist/plugin` 目录，可直接使用同一仓库中的 marketplace
 文件安装，不必再次构建；更新插件文件后重启桌面版即可刷新。
 
+### 公共 ChatGPT 插件 staging
+
+仓库还包含用于公共 ChatGPT 插件提交的 HTTP MCP Gateway。可使用
+`docker build -t code-relay-mcp .` 构建，并参考
+[`deploy/REMOTE-MCP-PLAN.md`](deploy/REMOTE-MCP-PLAN.md)。托管模式已经接入
+OAuth 2.1/PKCE、GitHub App 安装授权和 GitHub API 任务/回执存储；本地
+stdio 插件仍可用于桌面版和私有安装。
+
 开发者若要输出到其他目录，请同步修改
 `.agents/plugins/marketplace.json` 中的 `source.path`；普通本机安装请保持默认
 的 `dist/plugin` 路径。
@@ -171,7 +179,9 @@ marketplace 文件。
 
 Code Relay 目前是 MVP。验证命令不经过 shell 执行，shell 解释器与内联 eval 模式会被拒绝，输出大小和执行时间受到限制；危险命令模式会被拦截。用户仍需审阅任务内容和 runner 权限。
 
-默认邀请链接是短时 bearer link；受控部署可以在 Dev Host 和 Target Host 设置相同的 32 位以上 `CODE_RELAY_INVITE_SECRET`，启用 HMAC 完整性校验。用户级授权、撤销和集中式权限管理仍需要托管控制平面。
+本地流程中的邀请链接默认是短时 bearer link。托管 MCP 请求使用按用户
+隔离的 OAuth 会话和 GitHub App 安装授权；只有使用本地 verifier 邀请流程
+时才需要配置 `CODE_RELAY_INVITE_SECRET`。
 
 在暴露 runner 或 webhook 前，请先阅读 [SECURITY.md](SECURITY.md)；提交改动前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；参与项目请遵守 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
 

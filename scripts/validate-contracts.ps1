@@ -43,6 +43,17 @@ if (-not $server -or $server.command -ne "go" -or ($server.args -join " ") -ne "
   throw "Source MCP configuration must launch the Go mcp-stdio entrypoint"
 }
 
+$appManifest = Read-Json "deploy/github-app-manifest.json"
+foreach ($permission in @("contents", "actions", "metadata")) {
+  if ($null -eq $appManifest.default_permissions.$permission) { throw "GitHub App manifest is missing $permission permission" }
+}
+$remoteEnv = Join-Path $root "deploy/remote-mcp.env.example"
+if (-not (Test-Path -LiteralPath $remoteEnv -PathType Leaf)) { throw "Missing hosted MCP environment example" }
+$remoteEnvText = Get-Content -LiteralPath $remoteEnv -Raw
+foreach ($name in @("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID", "CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET", "CODE_RELAY_SESSION_SECRET", "CODE_RELAY_GITHUB_APP_ID", "CODE_RELAY_GITHUB_APP_PRIVATE_KEY_FILE")) {
+  if ($remoteEnvText -notmatch [regex]::Escape($name)) { throw "Hosted MCP environment example is missing $name" }
+}
+
 $task = Read-Json "examples/task-001.json"
 foreach ($field in @("task_id", "source_commit", "target", "objective", "validation_plan", "expected_results")) {
   if ($null -eq $task.$field) { throw "Task example is missing $field" }

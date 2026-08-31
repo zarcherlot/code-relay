@@ -155,6 +155,14 @@ If a prebuilt `dist/plugin` directory is provided, install it with the checked-i
 marketplace file without rebuilding. If you intentionally change the output directory,
 update `.agents/plugins/marketplace.json` so `source.path` still points to the package.
 
+### Public ChatGPT plugin staging
+
+The repository also includes an HTTP MCP gateway for public ChatGPT plugin
+submission. Build it with `docker build -t code-relay-mcp .` and follow
+[`deploy/REMOTE-MCP-PLAN.md`](deploy/REMOTE-MCP-PLAN.md). Hosted mode uses
+OAuth 2.1/PKCE, GitHub App installation authorization, and GitHub API storage;
+the local stdio plugin remains available for desktop/private use.
+
 For release validation, use `RELEASE_CHECKLIST.md`; verifier installation and
 incident handling are documented in `deploy/RUNBOOK.md`.
 
@@ -170,7 +178,10 @@ Run `code-relay-agent doctor --root .` to diagnose a host without changing proje
 
 Code Relay is an MVP. Validation commands run without a shell, shell interpreters and inline eval modes are rejected, output and execution time are bounded, and destructive command patterns are blocked. Users must still review task content and runner permissions.
 
-Invitations are short-lived bearer links by default. Controlled deployments can set the same 32+ character `CODE_RELAY_INVITE_SECRET` on the Dev Host and Target Host to enable HMAC integrity checks. Per-user authorization and revocation still require a hosted control plane.
+Invitations are short-lived bearer links by default for the local workflow.
+Hosted MCP requests use per-user OAuth sessions and GitHub App installation
+authorization; configure `CODE_RELAY_INVITE_SECRET` only when using the local
+verifier invitation flow.
 
 Read [SECURITY.md](SECURITY.md) before exposing a runner or webhook, [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.
 

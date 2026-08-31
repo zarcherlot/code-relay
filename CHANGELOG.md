@@ -6,6 +6,11 @@ All notable changes to Code Relay are recorded here. The project is currently in
 
 ### Reliability and release engineering
 
+- Added hosted MCP mode with OAuth 2.1/PKCE, encrypted stateless sessions,
+  GitHub App installation authorization, repository/branch access checks, and
+  GitHub Contents/Actions task and receipt flow.
+- Added hosted MCP audit test matrix and JSON request audit logging with secret
+  redaction boundaries.
 - Added contract validation for schemas, fixtures, plugin metadata, and MCP configuration.
 - Added cross-platform local end-to-end smoke coverage for passed and failed verification paths.
 - Added release artifact manifest/checksum verification and a repeatable release/rollback checklist.

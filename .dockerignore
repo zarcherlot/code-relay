@@ -1,0 +1,11 @@
+.git
+.gocache
+.gomodcache
+dist
+bin
+assets
+examples
+tasks
+receipts
+*.md
+!go.mod

@@ -44,10 +44,17 @@ only inside that organization.
 
 ## Public submission status
 
-The current plugin is a local stdio MCP package. Public submission requires a
-separately deployed HTTPS MCP endpoint, reviewer-ready test credentials when
-needed, domain verification, and tool metadata/annotations. The remote design
-is documented in `deploy/REMOTE-MCP-PLAN.md`.
+The repository now contains both the local stdio MCP package and a hosted
+HTTPS MCP gateway. Hosted mode is enabled by the GitHub OAuth/GitHub App
+environment variables documented in `deploy/remote-mcp.env.example`; it does
+not mount a project checkout and uses GitHub as the task/receipt source of
+truth. The deployment and rollout gates are documented in
+`deploy/REMOTE-MCP-PLAN.md` and the audit cases in
+`deploy/REMOTE-MCP-TEST-MATRIX.md`.
+
+Public submission still requires deploying that gateway on a real HTTPS
+domain, configuring the OAuth callback and GitHub App, completing domain
+verification, and supplying reviewer-ready staging credentials when needed.
 
 After that service is available:
 

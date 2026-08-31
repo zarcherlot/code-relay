@@ -1,0 +1,12 @@
+{
+  "name": "Code Relay",
+  "url": "https://github.com/zarcherlot/code-relay",
+  "redirect_url": "https://mcp.example.com/auth/github/app-callback",
+  "public": false,
+  "default_permissions": {
+    "contents": "write",
+    "actions": "write",
+    "metadata": "read"
+  },
+  "default_events": []
+}

@@ -18,6 +18,8 @@ on:
       - "CONTRIBUTING.md"
       - "SECURITY.md"
       - ".github/workflows/go-runtime.yml"
+      - "Dockerfile"
+      - ".dockerignore"
   pull_request:
     paths:
       - "cmd/**"
@@ -32,6 +34,8 @@ on:
       - "README*.md"
       - "CONTRIBUTING.md"
       - "SECURITY.md"
+      - "Dockerfile"
+      - ".dockerignore"
 
 permissions:
   contents: read
@@ -102,3 +106,12 @@ jobs:
         with:
           name: code-relay-agent
           path: dist/
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build remote MCP gateway image
+        run: docker build --pull -t code-relay-mcp:ci .

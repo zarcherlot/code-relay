@@ -34,24 +34,33 @@ func (request *mcpRequest) UnmarshalJSON(data []byte) error {
 }
 
 func mcpTools() []map[string]any {
-	tool := func(name, description string, properties map[string]any, required []string) map[string]any {
+	tool := func(name, description string, properties map[string]any, required []string, readOnly, openWorld, destructive bool) map[string]any {
 		if required == nil {
 			required = []string{}
 		}
-		return map[string]any{"name": name, "description": description, "inputSchema": map[string]any{"type": "object", "properties": properties, "required": required}}
+		return map[string]any{
+			"name":        name,
+			"description": description,
+			"inputSchema": map[string]any{"type": "object", "properties": properties, "required": required},
+			"annotations": map[string]any{
+				"readOnlyHint":    readOnly,
+				"openWorldHint":   openWorld,
+				"destructiveHint": destructive,
+			},
+		}
 	}
 	root := map[string]any{"type": "string"}
 	return []map[string]any{
-		tool("bind_project", "Bind the current project and branch to Code Relay.", map[string]any{"root": root, "role": map[string]any{"type": "string", "enum": []string{"orchestrator", "verifier"}}, "ref": map[string]any{"type": "string"}}, []string{"role"}),
-		tool("create_verifier_invite", "Create a short-lived verifier join link.", map[string]any{"root": root, "expires": map[string]any{"type": "integer", "minimum": 5, "maximum": 1440}, "one_time": map[string]any{"type": "boolean"}}, nil),
-		tool("join_verifier", "Join a branch-scoped verifier subscription.", map[string]any{"root": root, "url": map[string]any{"type": "string"}, "destination": map[string]any{"type": "string"}}, []string{"url"}),
-		tool("watcher_status", "Show the legacy local watcher state.", map[string]any{"root": root}, nil),
-		tool("stop_watcher", "Stop the legacy local watcher state.", map[string]any{"root": root}, nil),
-		tool("doctor", "Run non-mutating local health checks.", map[string]any{"root": root}, nil),
-		tool("publish_task", "Validate and publish a task.md.", map[string]any{"root": root, "markdown": map[string]any{"type": "string"}, "force": map[string]any{"type": "boolean"}, "no_git": map[string]any{"type": "boolean"}}, []string{"markdown"}),
-		tool("status", "Show task and receipt status.", map[string]any{"root": root}, nil),
-		tool("fetch_receipt", "Load and validate a task receipt.", map[string]any{"root": root, "task_id": map[string]any{"type": "string"}}, []string{"task_id"}),
-		tool("analyze", "Analyze a task receipt and determine the next state.", map[string]any{"root": root, "task_id": map[string]any{"type": "string"}}, []string{"task_id"}),
+		tool("bind_project", "Bind the current project and branch to Code Relay.", map[string]any{"root": root, "role": map[string]any{"type": "string", "enum": []string{"orchestrator", "verifier"}}, "ref": map[string]any{"type": "string"}}, []string{"role"}, false, true, true),
+		tool("create_verifier_invite", "Create a short-lived verifier join link.", map[string]any{"root": root, "expires": map[string]any{"type": "integer", "minimum": 5, "maximum": 1440}, "one_time": map[string]any{"type": "boolean"}}, nil, false, true, false),
+		tool("join_verifier", "Join a branch-scoped verifier subscription.", map[string]any{"root": root, "url": map[string]any{"type": "string"}, "destination": map[string]any{"type": "string"}}, []string{"url"}, false, true, true),
+		tool("watcher_status", "Show the legacy local watcher state.", map[string]any{"root": root}, nil, true, false, false),
+		tool("stop_watcher", "Stop the legacy local watcher state.", map[string]any{"root": root}, nil, false, false, true),
+		tool("doctor", "Run non-mutating local health checks.", map[string]any{"root": root}, nil, true, false, false),
+		tool("publish_task", "Validate and publish a task.md.", map[string]any{"root": root, "markdown": map[string]any{"type": "string"}, "force": map[string]any{"type": "boolean"}, "no_git": map[string]any{"type": "boolean"}}, []string{"markdown"}, false, true, true),
+		tool("status", "Show task and receipt status.", map[string]any{"root": root}, nil, true, false, false),
+		tool("fetch_receipt", "Load and validate a task receipt.", map[string]any{"root": root, "task_id": map[string]any{"type": "string"}}, []string{"task_id"}, true, false, false),
+		tool("analyze", "Analyze a task receipt and determine the next state.", map[string]any{"root": root, "task_id": map[string]any{"type": "string"}}, []string{"task_id"}, true, false, false),
 	}
 }
 

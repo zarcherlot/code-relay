@@ -1,0 +1,152 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/zarcherlot/code-relay/internal/relay"
+)
+
+var version = "2.0.0"
+
+func main() {
+	relay.SetVersion(version)
+	addr := flag.String("addr", envOr("PORT", "8080"), "HTTP listen address or port")
+	root := flag.String("root", os.Getenv("CODE_RELAY_MCP_ROOT"), "fixed project root")
+	flag.Parse()
+	if !strings.Contains(*addr, ":") {
+		*addr = ":" + *addr
+	}
+	var absRoot string
+	var err error
+	if strings.TrimSpace(*root) != "" {
+		absRoot, err = filepath.Abs(*root)
+		if err != nil {
+			fatal("resolve MCP root: %v", err)
+		}
+	}
+	config := relay.MCPHTTPConfig{
+		Root:            absRoot,
+		BearerToken:     os.Getenv("CODE_RELAY_MCP_TOKEN"),
+		DomainChallenge: os.Getenv("OPENAI_APPS_CHALLENGE"),
+		RatePerMinute:   envInt("CODE_RELAY_MCP_RATE_PER_MINUTE", 60),
+		MaxConcurrent:   envInt("CODE_RELAY_MCP_MAX_CONCURRENT", 4),
+		RequestTimeout:  time.Duration(envInt("CODE_RELAY_MCP_TIMEOUT_SECONDS", 60)) * time.Second,
+	}
+	remoteEnabled := strings.TrimSpace(os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID")) != ""
+	if remoteEnabled {
+		appID, parseErr := strconv.ParseInt(strings.TrimSpace(os.Getenv("CODE_RELAY_GITHUB_APP_ID")), 10, 64)
+		if parseErr != nil || appID <= 0 {
+			fatal("CODE_RELAY_GITHUB_APP_ID must be a positive integer")
+		}
+		privateKey := []byte(os.Getenv("CODE_RELAY_GITHUB_APP_PRIVATE_KEY"))
+		if keyFile := strings.TrimSpace(os.Getenv("CODE_RELAY_GITHUB_APP_PRIVATE_KEY_FILE")); keyFile != "" {
+			privateKey, err = os.ReadFile(keyFile)
+			if err != nil {
+				fatal("read GitHub App private key: %v", err)
+			}
+		}
+		privateKey = []byte(strings.ReplaceAll(string(privateKey), `\n`, "\n"))
+		apiURL := envOr("CODE_RELAY_GITHUB_API_URL", "https://api.github.com")
+		app, appErr := relay.NewGitHubAppClient(relay.GitHubAppConfig{AppID: appID, PrivateKeyPEM: privateKey, APIBaseURL: apiURL})
+		if appErr != nil {
+			fatal("configure GitHub App: %v", appErr)
+		}
+		backend, backendErr := relay.NewGitHubRemoteBackend(app, envOr("CODE_RELAY_GITHUB_WORKFLOW", "verify-on-b.yml"))
+		if backendErr != nil {
+			fatal("configure remote backend: %v", backendErr)
+		}
+		backend.SetAllowedRefs(splitCSV(os.Getenv("CODE_RELAY_ALLOWED_REFS")))
+		oauth, oauthErr := relay.NewOAuthService(relay.OAuthConfig{
+			ClientID:       os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID"),
+			ClientSecret:   os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET"),
+			RedirectURL:    os.Getenv("CODE_RELAY_GITHUB_OAUTH_REDIRECT_URL"),
+			SessionSecret:  os.Getenv("CODE_RELAY_SESSION_SECRET"),
+			AppSlug:        os.Getenv("CODE_RELAY_GITHUB_APP_SLUG"),
+			GitHubOAuthURL: envOr("CODE_RELAY_GITHUB_OAUTH_URL", "https://github.com"),
+			GitHubAPIURL:   apiURL,
+			CookieDomain:   os.Getenv("CODE_RELAY_COOKIE_DOMAIN"),
+			SecureCookies:  envBool("CODE_RELAY_COOKIE_SECURE", true),
+		})
+		if oauthErr != nil {
+			fatal("configure OAuth: %v", oauthErr)
+		}
+		config.OAuth = oauth
+		config.RemoteBackend = backend
+	} else if strings.TrimSpace(absRoot) == "" {
+		fatal("CODE_RELAY_MCP_ROOT is required in staging mode; configure CODE_RELAY_GITHUB_OAUTH_CLIENT_ID for hosted mode")
+	}
+	handler, err := relay.MCPHTTPHandler(config)
+	if err != nil {
+		fatal("configure MCP gateway: %v", err)
+	}
+	server := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 70 * time.Second, WriteTimeout: 70 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 * 1024}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	}()
+	if config.RemoteBackend != nil {
+		fmt.Printf("Code Relay MCP gateway listening on %s (hosted GitHub App mode)\n", *addr)
+	} else {
+		fmt.Printf("Code Relay MCP gateway listening on %s (root=%s)\n", *addr, absRoot)
+	}
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		fatal("MCP gateway: %v", err)
+	}
+}
+
+func envOr(name, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func envInt(name string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+		return parsed
+	}
+	return fallback
+}
+
+func envBool(name string, fallback bool) bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if value := strings.TrimSpace(part); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func fatal(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "error: "+format+"\n", args...)
+	os.Exit(1)
+}
