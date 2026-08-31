@@ -51,6 +51,16 @@ code-relay-agent (Go)
 - 生成 SHA-256、SBOM 和版本元数据。
 - 插件 MCP 配置直接启动 Go agent。
 
+## 阶段 5：发布验收和运行维护
+
+- 使用 `scripts/validate-contracts.ps1` 校验 Schema、fixture、插件 manifest 和 MCP 配置。
+- 使用 `scripts/smoke-e2e.ps1` 验证本地通过/失败回执链路。
+- 使用 `scripts/verify-release.ps1` 校验五平台产物、发布 manifest 和 SHA-256。
+- 按 `RELEASE_CHECKLIST.md` 创建 tag、核验 provenance，并保留回滚记录。
+- 按 `deploy/RUNBOOK.md` 完成 runner 初始化、故障排查和数据保留。
+
+验收：`v2.0.0` release workflow 成功，Go runtime CI 通过，工作区不残留构建缓存或中间产物。
+
 ## 删除项
 
 - `code_relay/`
