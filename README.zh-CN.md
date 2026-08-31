@@ -90,6 +90,7 @@ Relay 适合那些经常遇到“本地能写，但必须去另一台机器才�
 
 ```text
 .codex-plugin/plugin.json       # Codex 插件清单
+.agents/plugins/marketplace.json # 桌面版本地安装用的仓库 marketplace
 .mcp.json                       # 源码工作区 MCP 配置（Go 开发回退入口）
 skills/                         # 编排端和验证端 Skills
 cmd/code-relay-agent/           # Go CLI 与 MCP 入口
@@ -128,11 +129,32 @@ Go 运行时支持 Linux、macOS 和 Windows（macOS 同时提供 Intel 与 Appl
 ./scripts/build-agent.ps1
 ```
 
-要生成包含当前平台 MCP 可执行文件和正确 `.mcp.json` 的插件包，可运行：
+### 本机安装（推荐）
+
+仓库已经包含 `.agents/plugins/marketplace.json`，因此不需要手工创建
+marketplace JSON。只需在仓库根目录执行一次打包命令：
 
 ```powershell
-./scripts/package-plugin.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\package-plugin.ps1 `
+  -Output .\dist\plugin
 ```
+
+脚本会按当前系统和架构构建原生 `code-relay-agent`，并生成插件需要的
+`.mcp.json`、skills、schemas、templates 和 assets。打包完成后，运行时不需要
+安装 Go；只有从源码重新打包时才需要 Go。
+
+然后重启 ChatGPT 桌面版，在 `Plugins Directory`（部分账号显示为 `Plugins`
+或 `Apps`）中选择 `Code Relay (Local)` → `Code Relay` → `Install`，再新建聊天
+测试即可。无需执行 `codex plugin marketplace add`，也无需复制或编辑
+marketplace 文件。
+
+如果只拿到已经生成的 `dist/plugin` 目录，可直接使用同一仓库中的 marketplace
+文件安装，不必再次构建；更新插件文件后重启桌面版即可刷新。
+
+开发者若要输出到其他目录，请同步修改
+`.agents/plugins/marketplace.json` 中的 `source.path`；普通本机安装请保持默认
+的 `dist/plugin` 路径。
 
 发布验收请参照 `RELEASE_CHECKLIST.md`，验证机部署和故障处理请参照
 `deploy/RUNBOOK.md`。

@@ -55,7 +55,7 @@ try {
   Set-Content -LiteralPath (Join-Path $outputRoot ".mcp.json") -Value $mcp -Encoding UTF8
   Get-Content -LiteralPath (Join-Path $outputRoot ".mcp.json") -Raw | ConvertFrom-Json | Out-Null
 
-  foreach ($path in @(".codex-plugin", "skills", "schemas", "templates")) {
+  foreach ($path in @(".codex-plugin", "skills", "schemas", "templates", "assets")) {
     Copy-Item -LiteralPath (Join-Path $root $path) -Destination (Join-Path $outputRoot $path) -Recurse -Force
   }
   Write-Output "Plugin package: $outputRoot"

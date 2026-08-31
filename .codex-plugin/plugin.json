@@ -3,8 +3,11 @@
   "version": "2.0.0",
   "description": "Branch-scoped orchestration and verification for Code Relay projects.",
   "author": {
-    "name": "Code Relay"
+    "name": "Code Relay",
+    "url": "https://github.com/zarcherlot/code-relay"
   },
+  "homepage": "https://github.com/zarcherlot/code-relay",
+  "repository": "https://github.com/zarcherlot/code-relay",
   "license": "MIT",
   "keywords": ["codex", "verification", "github", "workflow"],
   "skills": "./skills/",
@@ -16,11 +19,17 @@
     "developerName": "Code Relay",
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://github.com/zarcherlot/code-relay",
+    "privacyPolicyURL": "https://github.com/zarcherlot/code-relay/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/zarcherlot/code-relay/blob/main/TERMS.md",
     "defaultPrompt": [
       "Bind this project to Code Relay",
       "Join this project as a Code Relay verifier",
       "Show verifier status and latest receipts"
     ],
-    "brandColor": "#2563EB"
+    "brandColor": "#2563EB",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png",
+    "screenshots": ["./assets/overview.png"]
   }
 }

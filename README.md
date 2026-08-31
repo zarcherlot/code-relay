@@ -92,6 +92,7 @@ The complete user journey is documented in [USER_GUIDE.md](USER_GUIDE.md).
 
 ```text
 .codex-plugin/plugin.json       # Codex plugin manifest
+.agents/plugins/marketplace.json # repo-local marketplace for desktop install
 .mcp.json                       # source checkout MCP config (Go developer fallback)
 skills/                         # orchestrator and verifier Skills
 cmd/code-relay-agent/           # Go CLI and MCP entrypoint
@@ -130,11 +131,29 @@ The Go runtime ships for Linux, macOS, and Windows (amd64 and arm64 where applic
 ./scripts/build-agent.ps1
 ```
 
-To build a plugin bundle with the platform-specific MCP executable and `.mcp.json`, run:
+### Local desktop installation (recommended)
+
+The repository already includes `.agents/plugins/marketplace.json`, so users do not
+need to create or edit marketplace JSON by hand. From the repository root, run:
 
 ```powershell
-./scripts/package-plugin.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\package-plugin.ps1 `
+  -Output .\dist\plugin
 ```
+
+The script builds the native `code-relay-agent` for the current OS/architecture and
+assembles `.mcp.json`, skills, schemas, templates, and assets. Go is needed only when
+rebuilding from source; the packaged plugin does not need Go at runtime.
+
+Restart the ChatGPT desktop app, open `Plugins Directory` (shown as `Plugins` or
+`Apps` for some accounts), choose `Code Relay (Local)` → `Code Relay` → `Install`,
+and test in a new chat. No `codex plugin marketplace add` command or manual marketplace
+file editing is required.
+
+If a prebuilt `dist/plugin` directory is provided, install it with the checked-in
+marketplace file without rebuilding. If you intentionally change the output directory,
+update `.agents/plugins/marketplace.json` so `source.path` still points to the package.
 
 For release validation, use `RELEASE_CHECKLIST.md`; verifier installation and
 incident handling are documented in `deploy/RUNBOOK.md`.
