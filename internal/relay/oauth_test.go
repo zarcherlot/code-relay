@@ -127,3 +127,54 @@ func TestOAuthExchangeErrorIsActionable(t *testing.T) {
 		t.Fatalf("expected actionable OAuth error, got %d %q", callback.Code, callback.Body.String())
 	}
 }
+
+func TestOAuthAutoBindsSelectedInstallation(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/login/oauth/access_token":
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "oauth-secret-token"})
+		case "/user":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 17, "login": "alice"})
+		case "/user/installations":
+			_ = json.NewEncoder(w).Encode(map[string]any{"installations": []map[string]any{{"id": 7, "app_slug": "code-relay", "repository_selection": "selected"}}})
+		case "/user/installations/7/repositories":
+			_ = json.NewEncoder(w).Encode(map[string]any{"repositories": []map[string]any{{"full_name": "acme/demo"}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+
+	service, err := NewOAuthService(OAuthConfig{ClientID: "client", ClientSecret: "secret", RedirectURL: "https://relay.example/auth/github/callback", SessionSecret: strings.Repeat("s", 32), AppSlug: "code-relay", GitHubOAuthURL: provider.URL, GitHubAPIURL: provider.URL, SecureCookies: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := httptest.NewRecorder()
+	service.ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/auth/github?repository=acme/demo&ref=refs/heads/main", nil))
+	location, err := url.Parse(start.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callback := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/auth/github/callback?code=abc&state="+url.QueryEscape(location.Query().Get("state")), nil)
+	request.AddCookie(start.Result().Cookies()[0])
+	service.ServeHTTP(callback, request)
+	if callback.Code != http.StatusFound || callback.Header().Get("Location") != "/" {
+		t.Fatalf("unexpected callback: %d %s", callback.Code, callback.Header().Get("Location"))
+	}
+	var sessionCookie *http.Cookie
+	for _, cookie := range callback.Result().Cookies() {
+		if cookie.Name == defaultSessionCookie {
+			sessionCookie = cookie
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("session cookie missing")
+	}
+	authRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	authRequest.AddCookie(sessionCookie)
+	session, err := service.Authenticate(authRequest)
+	if err != nil || session.InstallationID != 7 || session.Repository != "acme/demo" || session.Ref != "refs/heads/main" {
+		t.Fatalf("unexpected bound session: %+v, %v", session, err)
+	}
+}

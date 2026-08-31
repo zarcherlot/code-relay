@@ -189,6 +189,12 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// Hosted mode is repository-scoped and never accepts filesystem paths.
 			delete(args, "root")
+			if session.Repository != "" && stringArg(args, "repository") == "" {
+				args["repository"] = session.Repository
+			}
+			if session.Ref != "" && stringArg(args, "ref") == "" {
+				args["ref"] = session.Ref
+			}
 			request.Params["arguments"] = args
 		}
 	}
@@ -210,6 +216,7 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var response map[string]any
 	if h.config.RemoteBackend != nil && request.Method == "tools/call" {
 		response = handleRemoteMCP(ctx, h.config.RemoteBackend, session, request)
+		h.persistBinding(w, session, request, response)
 	} else {
 		response = handleMCP(request)
 	}
@@ -217,6 +224,33 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if response != nil && (request.HasID || request.JSONRPC != "2.0" || request.Method == "") {
 		h.writeMCP(w, response)
 	}
+}
+
+func (h *mcpHTTPHandler) persistBinding(w http.ResponseWriter, session OAuthSession, request mcpRequest, response map[string]any) {
+	if h.config.OAuth == nil || requestToolName(request) != "bind_project" || response == nil || response["error"] != nil {
+		return
+	}
+	repository, ref, ok := bindingFromResponse(response)
+	if !ok {
+		return
+	}
+	if err := h.config.OAuth.setBinding(w, session, repository, ref); err != nil {
+		h.config.AuditLogger.Warn("mcp binding persistence failed", "subject", session.Subject, "error", err)
+	}
+}
+
+func bindingFromResponse(response map[string]any) (string, string, bool) {
+	result, ok := response["result"].(map[string]any)
+	if !ok {
+		return "", "", false
+	}
+	value, ok := result["structuredContent"].(map[string]any)
+	if !ok {
+		return "", "", false
+	}
+	repository, _ := value["repository"].(string)
+	ref, _ := value["ref"].(string)
+	return strings.TrimSpace(repository), strings.TrimSpace(ref), repository != "" && ref != ""
 }
 
 func (h *mcpHTTPHandler) challenge(w http.ResponseWriter, r *http.Request) {
@@ -308,33 +342,14 @@ func remoteMCPToolSchemas(tools []map[string]any) []map[string]any {
 			if schema, ok := tool["inputSchema"].(map[string]any); ok {
 				if props, ok := schema["properties"].(map[string]any); ok {
 					delete(props, "root")
-					props["repository"] = map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"}
-					props["ref"] = map[string]any{"type": "string", "pattern": "^refs/heads/[A-Za-z0-9._/-]+$"}
+					props["repository"] = map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", "description": "Optional when the active ChatGPT project context supplies the repository."}
+					props["ref"] = map[string]any{"type": "string", "pattern": "^refs/heads/[A-Za-z0-9._/-]+$", "description": "Optional when the active ChatGPT project context supplies the branch."}
+					props["project_context"] = map[string]any{"type": "object", "properties": map[string]any{"repository": map[string]any{"type": "string"}, "ref": map[string]any{"type": "string"}}, "description": "Project context supplied by the ChatGPT host; explicit repository/ref values take precedence."}
 				}
-				required, _ := schema["required"].([]string)
-				if required == nil {
-					required = []string{}
-				}
-				if !containsString(required, "repository") {
-					required = append(required, "repository")
-				}
-				if !containsString(required, "ref") {
-					required = append(required, "ref")
-				}
-				schema["required"] = required
 			}
 		}
 	}
 	return tools
-}
-
-func containsString(values []string, value string) bool {
-	for _, item := range values {
-		if item == value {
-			return true
-		}
-	}
-	return false
 }
 
 func requestToolName(request mcpRequest) string {

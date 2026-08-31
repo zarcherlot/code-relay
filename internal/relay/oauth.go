@@ -49,15 +49,19 @@ type OAuthSession struct {
 	Login          string `json:"login"`
 	AccessToken    string `json:"access_token"`
 	InstallationID int64  `json:"installation_id,omitempty"`
+	Repository     string `json:"repository,omitempty"`
+	Ref            string `json:"ref,omitempty"`
 	IssuedAt       int64  `json:"iat"`
 	ExpiresAt      int64  `json:"exp"`
 }
 
 type oauthState struct {
-	State    string `json:"state"`
-	Verifier string `json:"verifier"`
-	Next     string `json:"next"`
-	Expires  int64  `json:"exp"`
+	State      string `json:"state"`
+	Verifier   string `json:"verifier"`
+	Next       string `json:"next"`
+	Repository string `json:"repository,omitempty"`
+	Ref        string `json:"ref,omitempty"`
+	Expires    int64  `json:"exp"`
 }
 
 type githubUser struct {
@@ -157,9 +161,14 @@ func (s *OAuthService) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next := safeNext(r.URL.Query().Get("next"))
+	repository, ref, err := requestedBinding(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	state := randomToken(32)
 	verifier := randomToken(48)
-	payload := oauthState{State: state, Verifier: verifier, Next: next, Expires: time.Now().Add(10 * time.Minute).Unix()}
+	payload := oauthState{State: state, Verifier: verifier, Next: next, Repository: repository, Ref: ref, Expires: time.Now().Add(10 * time.Minute).Unix()}
 	value, err := s.seal(payload)
 	if err != nil {
 		http.Error(w, "oauth state unavailable", http.StatusInternalServerError)
@@ -211,12 +220,26 @@ func (s *OAuthService) callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "GitHub identity lookup failed", http.StatusBadGateway)
 		return
 	}
-	session := OAuthSession{Subject: strconv.FormatInt(user.ID, 10), Login: user.Login, AccessToken: token, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(8 * time.Hour).Unix()}
+	session := OAuthSession{Subject: strconv.FormatInt(user.ID, 10), Login: user.Login, AccessToken: token, Repository: state.Repository, Ref: state.Ref, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(8 * time.Hour).Unix()}
+	if session.Repository != "" {
+		installationID, findErr := NewGitHubAppVerifier(s.config.GitHubAPIURL).FindUserInstallationForRepository(r.Context(), token, s.config.AppSlug, session.Repository)
+		if findErr == nil {
+			session.InstallationID = installationID
+		} else if !errors.Is(findErr, errInstallationNotFound) {
+			http.Error(w, "GitHub App installation lookup failed", http.StatusBadGateway)
+			return
+		}
+	}
 	if err := s.setSession(w, session); err != nil {
 		http.Error(w, "session unavailable", http.StatusInternalServerError)
 		return
 	}
 	http.SetCookie(w, s.cookie(s.config.StateCookie, "", -1))
+	if session.Repository != "" && session.InstallationID <= 0 {
+		installURL := "/auth/github/install?next=" + url.QueryEscape(state.Next)
+		http.Redirect(w, r, installURL, http.StatusFound)
+		return
+	}
 	http.Redirect(w, r, state.Next, http.StatusFound)
 }
 
@@ -225,8 +248,26 @@ func (s *OAuthService) install(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodGet)
 		return
 	}
-	if _, err := s.Authenticate(r); err != nil {
+	session, err := s.Authenticate(r)
+	if err != nil {
 		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+	repository, ref, bindingErr := requestedBinding(r)
+	if bindingErr != nil {
+		http.Error(w, bindingErr.Error(), http.StatusBadRequest)
+		return
+	}
+	if repository == "" {
+		repository, ref = session.Repository, session.Ref
+	}
+	if repository == "" || ref == "" {
+		http.Error(w, "repository and ref are required to install Code Relay", http.StatusBadRequest)
+		return
+	}
+	session.Repository, session.Ref = repository, ref
+	if err := s.setSession(w, session); err != nil {
+		http.Error(w, "session unavailable", http.StatusInternalServerError)
 		return
 	}
 	query := url.Values{"state": []string{safeNext(r.URL.Query().Get("next"))}}
@@ -249,8 +290,13 @@ func (s *OAuthService) appCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid installation id", http.StatusBadRequest)
 		return
 	}
+	if session.Repository == "" || session.Ref == "" {
+		http.Error(w, "repository binding is required", http.StatusBadRequest)
+		return
+	}
 	appClient := NewGitHubAppVerifier(s.config.GitHubAPIURL)
-	if err := appClient.VerifyUserInstallation(r.Context(), session.AccessToken, installationID); err != nil {
+	resolvedID, err := appClient.FindUserInstallationForRepository(r.Context(), session.AccessToken, s.config.AppSlug, session.Repository)
+	if err != nil || resolvedID != installationID {
 		http.Error(w, "installation is not available to this user", http.StatusForbidden)
 		return
 	}
@@ -278,6 +324,16 @@ func (s *OAuthService) setSession(w http.ResponseWriter, session OAuthSession) e
 	}
 	http.SetCookie(w, s.cookie(s.config.SessionCookie, value, int(time.Until(time.Unix(session.ExpiresAt, 0)).Seconds())))
 	return nil
+}
+
+func (s *OAuthService) setBinding(w http.ResponseWriter, session OAuthSession, repository, ref string) error {
+	normalizedRepository, normalizedRef, err := normalizeBinding(repository, ref)
+	if err != nil {
+		return err
+	}
+	session.Repository = normalizedRepository
+	session.Ref = normalizedRef
+	return s.setSession(w, session)
 }
 
 func (s *OAuthService) exchangeCode(ctx context.Context, code, verifier string) (string, error) {
@@ -391,6 +447,30 @@ func safeNext(value string) string {
 		return "/"
 	}
 	return value
+}
+
+func requestedBinding(r *http.Request) (string, string, error) {
+	repository := strings.TrimSpace(r.URL.Query().Get("repository"))
+	ref := strings.TrimSpace(r.URL.Query().Get("ref"))
+	if repository == "" && ref == "" {
+		return "", "", nil
+	}
+	if repository == "" || ref == "" {
+		return "", "", errors.New("repository and ref must be provided together")
+	}
+	return normalizeBinding(repository, ref)
+}
+
+func normalizeBinding(repository, ref string) (string, string, error) {
+	normalizedRepository, err := normalizeRepository(repository)
+	if err != nil {
+		return "", "", err
+	}
+	normalizedRef, err := normalizeRef(ref)
+	if err != nil {
+		return "", "", err
+	}
+	return normalizedRepository, normalizedRef, nil
 }
 
 func methodNotAllowed(w http.ResponseWriter, allowed string) {

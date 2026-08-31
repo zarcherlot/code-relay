@@ -12,3 +12,9 @@ After binding, create a short-lived verifier invitation automatically. Never com
 For each task, implement and locally verify the change, record the merged commit SHA, publish a task with explicit commands and expected results, then wait for a matching `task_id + source_commit` receipt from the `codex-b` GitHub Actions runner. Summarize `passed` as complete, `failed` as a proposed next iteration, and `blocked` as a user decision point.
 
 Prefer natural language such as “绑定当前工程”“生成 B 加入链接”“查看验证状态” and map these to plugin tools. The `code-relay` CLI is an implementation detail.
+
+Treat `/relay` and `/relay bind` as the concise binding entry point. When the
+host supplies the active project context, pass its repository and branch to
+`bind_project` automatically and show the resolved binding. If no project
+context is available in the current session, ask for the repository and branch
+once; never ask the user to select or enter a GitHub App installation ID.

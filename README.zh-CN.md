@@ -46,6 +46,9 @@ Relay 将每个任务绑定到仓库、分支和 source commit，确保目标机
 
    > 为当前工程当前分支启用 Code Relay，并生成 Target Host 加入链接。
 
+   也可以在当前项目上下文中使用 `/relay` 或 `/relay bind`；插件会优先读取
+   当前仓库和分支并自动完成绑定。
+
 3. 在目标机安装同一个插件，把加入链接粘贴到 Codex 中。
 4. 目标机加入获准的仓库和分支，通过带 `codex-b` 标签的 GitHub Actions runner 执行任务并发布回执。
 

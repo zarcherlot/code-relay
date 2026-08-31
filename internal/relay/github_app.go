@@ -53,6 +53,14 @@ type githubRepo struct {
 	Private  bool   `json:"private"`
 }
 
+type githubInstallation struct {
+	ID                  int64  `json:"id"`
+	AppSlug             string `json:"app_slug"`
+	RepositorySelection string `json:"repository_selection"`
+}
+
+var errInstallationNotFound = errors.New("GitHub App installation not found for repository")
+
 func NewGitHubAppClient(config GitHubAppConfig) (*GitHubAppClient, error) {
 	if config.AppID <= 0 {
 		return nil, errors.New("GitHub App ID is required")
@@ -171,6 +179,37 @@ func (c *GitHubAppClient) UserCanAccessRepository(ctx context.Context, userToken
 		}
 	}
 	return fmt.Errorf("GitHub App installation does not grant access to %s", repository)
+}
+
+func (c *GitHubAppClient) FindUserInstallationForRepository(ctx context.Context, userToken, appSlug, repository string) (int64, error) {
+	if strings.TrimSpace(appSlug) == "" {
+		return 0, errors.New("GitHub App slug is required")
+	}
+	repository, err := normalizeRepository(repository)
+	if err != nil {
+		return 0, err
+	}
+	var out struct {
+		Installations []githubInstallation `json:"installations"`
+	}
+	if err := c.requestJSON(ctx, http.MethodGet, "/user/installations?per_page=100", userToken, nil, &out); err != nil {
+		return 0, err
+	}
+	for _, installation := range out.Installations {
+		if installation.ID <= 0 || !strings.EqualFold(installation.AppSlug, appSlug) || installation.RepositorySelection == "all" {
+			continue
+		}
+		repositories, err := c.listUserInstallationRepositories(ctx, userToken, installation.ID)
+		if err != nil {
+			return 0, err
+		}
+		for _, repo := range repositories {
+			if strings.EqualFold(repo.FullName, repository) {
+				return installation.ID, nil
+			}
+		}
+	}
+	return 0, errInstallationNotFound
 }
 
 func (c *GitHubAppClient) requestJSON(ctx context.Context, method, path, token string, body []byte, out any) error {

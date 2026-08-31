@@ -39,6 +39,14 @@ installation), `/auth/github/app-callback` (bind installation to the signed-in
 user), and `/auth/logout`. MCP clients connect to `/mcp` with the encrypted
 session cookie established by that flow.
 
+The hosted binding flow accepts repository/ref from the active ChatGPT project
+context. `bind_project` can omit those fields after OAuth; the gateway resolves
+them from the session binding. OAuth attempts to locate a selected-repository
+installation for the configured App automatically and rejects installations
+configured for all repositories. If no suitable installation exists, the user
+is sent through the App installation flow for the requested repository; the
+installation ID is never a user-facing input.
+
 OAuth state and sessions are encrypted, short-lived cookies, so the gateway
 does not require a local database or persistent container volume for identity
 state. GitHub remains the source of truth for repository authorization,

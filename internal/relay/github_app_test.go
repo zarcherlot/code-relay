@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -81,5 +82,27 @@ func TestGitHubAppRepositoryAPI(t *testing.T) {
 	}
 	if _, err := normalizeRepository("acme/demo/extra"); err == nil {
 		t.Fatal("expected repository path rejection")
+	}
+}
+
+func TestFindUserInstallationForRepositoryRejectsAllRepositories(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user/installations":
+			_, _ = w.Write([]byte(`{"installations":[{"id":1,"app_slug":"other-app","repository_selection":"selected"},{"id":2,"app_slug":"code-relay-mcp","repository_selection":"all"},{"id":3,"app_slug":"code-relay-mcp","repository_selection":"selected"}]}`))
+		case "/user/installations/3/repositories":
+			_, _ = w.Write([]byte(`{"repositories":[{"full_name":"acme/demo"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	app := NewGitHubAppVerifier(server.URL)
+	installationID, err := app.FindUserInstallationForRepository(t.Context(), "user-token", "code-relay-mcp", "acme/demo")
+	if err != nil || installationID != 3 {
+		t.Fatalf("installation = %d, %v", installationID, err)
+	}
+	if _, err := app.FindUserInstallationForRepository(t.Context(), "user-token", "code-relay-mcp", "acme/missing"); !errors.Is(err, errInstallationNotFound) {
+		t.Fatalf("expected installation-not-found, got %v", err)
 	}
 }

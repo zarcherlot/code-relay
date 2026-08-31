@@ -80,7 +80,7 @@ func TestRemoteHTTPRequiresOAuthAndDoesNotAcceptRoot(t *testing.T) {
 		t.Fatalf("expected unauthorized, got %d", unauth.Code)
 	}
 	cookieRecorder := httptest.NewRecorder()
-	if err := service.setSession(cookieRecorder, OAuthSession{Subject: "17", Login: "alice", AccessToken: "oauth", InstallationID: 7, IssuedAt: 1, ExpiresAt: 4102444800}); err != nil {
+	if err := service.setSession(cookieRecorder, OAuthSession{Subject: "17", Login: "alice", AccessToken: "oauth", InstallationID: 7, Repository: "acme/demo", Ref: "refs/heads/main", IssuedAt: 1, ExpiresAt: 4102444800}); err != nil {
 		t.Fatal(err)
 	}
 	var sessionCookie *http.Cookie
@@ -89,13 +89,13 @@ func TestRemoteHTTPRequiresOAuthAndDoesNotAcceptRoot(t *testing.T) {
 			sessionCookie = cookie
 		}
 	}
-	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "doctor", "arguments": map[string]any{"repository": "acme/demo", "ref": "refs/heads/main", "root": "C:/must-not-be-used"}}})
+	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "doctor", "arguments": map[string]any{"root": "C:/must-not-be-used"}}})
 	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(sessionCookie)
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
-	if res.Code != http.StatusOK || backend.name != "doctor" || backend.args["root"] != nil {
+	if res.Code != http.StatusOK || backend.name != "doctor" || backend.args["root"] != nil || backend.args["repository"] != "acme/demo" || backend.args["ref"] != "refs/heads/main" {
 		t.Fatalf("remote request not routed as expected: code=%d name=%s args=%#v body=%s", res.Code, backend.name, backend.args, res.Body.String())
 	}
 }
@@ -122,5 +122,13 @@ func TestRemoteAllowedRefPolicy(t *testing.T) {
 	}
 	if backend.AllowedRefs["acme/demo@refs/heads/dev"] {
 		t.Fatal("unexpected branch in allowlist")
+	}
+}
+
+func TestRemoteBindingRejectsExplicitScopeMismatch(t *testing.T) {
+	backend := &GitHubRemoteBackend{AllowedRefs: map[string]bool{}}
+	_, _, _, err := backend.authorizedRepository(context.Background(), OAuthSession{AccessToken: "token", InstallationID: 1, Repository: "acme/demo", Ref: "refs/heads/main"}, "status", map[string]any{"repository": "acme/other", "ref": "refs/heads/main"})
+	if err == nil || !strings.Contains(err.Error(), "active repository binding") {
+		t.Fatalf("expected active binding mismatch, got %v", err)
 	}
 }

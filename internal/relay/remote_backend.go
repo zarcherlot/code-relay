@@ -47,7 +47,7 @@ func (b *GitHubRemoteBackend) SetAllowedRefs(values []string) {
 }
 
 func (b *GitHubRemoteBackend) Call(ctx context.Context, session OAuthSession, name string, args map[string]any) (any, error) {
-	repo, repository, ref, err := b.authorizedRepository(ctx, session, args)
+	repo, repository, ref, err := b.authorizedRepository(ctx, session, name, args)
 	if err != nil {
 		return nil, err
 	}
@@ -115,14 +115,18 @@ func (b *GitHubRemoteBackend) Call(ctx context.Context, session OAuthSession, na
 	}
 }
 
-func (b *GitHubRemoteBackend) authorizedRepository(ctx context.Context, session OAuthSession, args map[string]any) (*GitHubRepositoryClient, string, string, error) {
-	repository, err := normalizeRepository(stringArg(args, "repository"))
+func (b *GitHubRemoteBackend) authorizedRepository(ctx context.Context, session OAuthSession, name string, args map[string]any) (*GitHubRepositoryClient, string, string, error) {
+	repositoryValue, refValue := projectBindingArgs(session, args)
+	repository, err := normalizeRepository(repositoryValue)
 	if err != nil {
 		return nil, "", "", err
 	}
-	ref, err := normalizeRef(stringArg(args, "ref"))
+	ref, err := normalizeRef(refValue)
 	if err != nil {
 		return nil, "", "", err
+	}
+	if name != "bind_project" && session.Repository != "" && (repository != session.Repository || ref != session.Ref) {
+		return nil, "", "", errors.New("request does not match the active repository binding")
 	}
 	if len(b.AllowedRefs) > 0 && !b.AllowedRefs[repository+"@"+ref] && !b.AllowedRefs[ref] {
 		return nil, "", "", errors.New("repository/ref is not allowed by the hosted policy")
@@ -138,6 +142,26 @@ func (b *GitHubRemoteBackend) authorizedRepository(ctx context.Context, session 
 		return nil, "", "", err
 	}
 	return repo, repository, ref, nil
+}
+
+func projectBindingArgs(session OAuthSession, args map[string]any) (string, string) {
+	repository := stringArg(args, "repository")
+	ref := stringArg(args, "ref")
+	if context, ok := args["project_context"].(map[string]any); ok {
+		if repository == "" {
+			repository = stringArg(context, "repository")
+		}
+		if ref == "" {
+			ref = stringArg(context, "ref")
+		}
+	}
+	if repository == "" {
+		repository = session.Repository
+	}
+	if ref == "" {
+		ref = session.Ref
+	}
+	return repository, ref
 }
 
 func (b *GitHubRemoteBackend) fetchReceipt(ctx context.Context, repo *GitHubRepositoryClient, repository, ref, id string) (Receipt, error) {
