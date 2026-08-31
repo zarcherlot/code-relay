@@ -1,9 +1,9 @@
 ---
-name: code-relay-orchestrator
+name: relay
 description: Use Code Relay from the current project and branch to orchestrate development and remote verification.
 ---
 
-# Code Relay orchestrator
+# Code Relay
 
 Treat the current Git remote and checked-out branch as the project binding. Use the plugin's project-bind action, show the resolved `repository + ref`, and ask for confirmation before writing project files or pushing.
 
@@ -18,3 +18,5 @@ host supplies the active project context, pass its repository and branch to
 `bind_project` automatically and show the resolved binding. If no project
 context is available in the current session, ask for the repository and branch
 once; never ask the user to select or enter a GitHub App installation ID.
+
+Use `$code-relay:relay status` for an explicit status request.

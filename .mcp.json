@@ -1,6 +1,8 @@
 {
-  "code-relay": {
-    "command": "go",
-    "args": ["run", "./cmd/code-relay-agent", "mcp-stdio"]
+  "mcpServers": {
+    "code-relay": {
+      "command": "go",
+      "args": ["run", "./cmd/code-relay-agent", "mcp-stdio"]
+    }
   }
 }

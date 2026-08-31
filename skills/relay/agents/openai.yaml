@@ -1,0 +1,4 @@
+interface:
+  display_name: "Relay"
+  short_description: "Orchestrate development and remote verification."
+  default_prompt: "Show Code Relay status for the current project and branch."

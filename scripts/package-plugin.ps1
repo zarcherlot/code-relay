@@ -51,7 +51,14 @@ try {
   }
 
   $command = if ($goos -eq "windows") { "./bin/code-relay-agent.exe" } else { "./bin/code-relay-agent" }
-  $mcp = @{ "code-relay" = @{ command = $command; args = @("mcp-stdio") } } | ConvertTo-Json -Depth 4
+  $mcp = @{
+    mcpServers = @{
+      "code-relay" = @{
+        command = $command
+        args = @("mcp-stdio")
+      }
+    }
+  } | ConvertTo-Json -Depth 4
   Set-Content -LiteralPath (Join-Path $outputRoot ".mcp.json") -Value $mcp -Encoding UTF8
   Get-Content -LiteralPath (Join-Path $outputRoot ".mcp.json") -Raw | ConvertFrom-Json | Out-Null
 

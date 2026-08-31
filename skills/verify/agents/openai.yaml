@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify"
+  short_description: "Join a Relay branch and verify incoming tasks."
+  default_prompt: "Show verifier status for the current Code Relay binding."

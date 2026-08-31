@@ -30,15 +30,15 @@ foreach ($field in @("allowed_commands", "denied_command_arguments", "deny_token
 }
 
 $manifest = Read-Json ".codex-plugin/plugin.json"
-if ($manifest.name -ne "code-relay" -or $manifest.version -ne "2.0.0") {
-  throw "Plugin manifest must identify code-relay 2.0.0"
+if ($manifest.name -ne "code-relay" -or $manifest.version -notmatch '^2\.0\.0(?:\+codex\.[A-Za-z0-9._-]+)?$') {
+  throw "Plugin manifest must identify code-relay 2.0.0, optionally with a Codex cachebuster"
 }
 if ($manifest.interface.displayName -ne "Code Relay") {
   throw "Plugin display name must be Code Relay"
 }
 
 $mcp = Read-Json ".mcp.json"
-$server = $mcp.'code-relay'
+$server = $mcp.mcpServers.'code-relay'
 if (-not $server -or $server.command -ne "go" -or ($server.args -join " ") -ne "run ./cmd/code-relay-agent mcp-stdio") {
   throw "Source MCP configuration must launch the Go mcp-stdio entrypoint"
 }
@@ -66,4 +66,4 @@ if ($receipt.status -notin @("passed", "failed", "blocked")) {
   throw "Receipt example has an invalid status"
 }
 
-Write-Output "Code Relay contracts validated: $($schemaFiles.Count) schemas, plugin 2.0.0, MCP, task and receipt fixtures."
+Write-Output "Code Relay contracts validated: $($schemaFiles.Count) schemas, plugin $($manifest.version), MCP, task and receipt fixtures."
