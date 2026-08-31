@@ -20,6 +20,12 @@ func TestMCPHTTPHealthAndAuth(t *testing.T) {
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"status":"ok"`) {
 		t.Fatalf("unexpected health response: %d %s", recorder.Code, recorder.Body.String())
 	}
+	home := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, home)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "gateway is running") {
+		t.Fatalf("unexpected home response: %d %s", recorder.Code, recorder.Body.String())
+	}
 	challenge := httptest.NewRequest(http.MethodGet, "/.well-known/openai-apps-challenge", nil)
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, challenge)

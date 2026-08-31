@@ -115,6 +115,10 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.health(w, r)
 		return
 	}
+	if r.URL.Path == "/" {
+		h.home(w, r)
+		return
+	}
 	if r.URL.Path != "/mcp" {
 		http.NotFound(w, r)
 		return
@@ -233,6 +237,17 @@ func (h *mcpHTTPHandler) health(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "service": "code-relay-mcp", "version": versionString})
+}
+
+func (h *mcpHTTPHandler) home(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = io.WriteString(w, "Code Relay MCP gateway is running.\nUse /auth/github to sign in or /healthz to check status.\n")
 }
 
 func (h *mcpHTTPHandler) authorized(r *http.Request) bool {
