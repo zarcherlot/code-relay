@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -141,31 +142,30 @@ func (c *GitHubAppClient) InstallationToken(ctx context.Context, installationID 
 }
 
 func (c *GitHubAppClient) VerifyUserInstallation(ctx context.Context, userToken string, installationID int64) error {
+	_, err := c.listUserInstallationRepositories(ctx, userToken, installationID)
+	return err
+}
+
+func (c *GitHubAppClient) listUserInstallationRepositories(ctx context.Context, userToken string, installationID int64) ([]githubRepo, error) {
 	if strings.TrimSpace(userToken) == "" || installationID <= 0 {
-		return errors.New("invalid user token or installation id")
+		return nil, errors.New("invalid user token or installation id")
 	}
 	path := fmt.Sprintf("/user/installations/%d/repositories?per_page=100", installationID)
 	var out struct {
 		Repositories []githubRepo `json:"repositories"`
 	}
 	if err := c.requestJSON(ctx, http.MethodGet, path, userToken, nil, &out); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return out.Repositories, nil
 }
 
 func (c *GitHubAppClient) UserCanAccessRepository(ctx context.Context, userToken string, installationID int64, repository string) error {
-	if err := c.VerifyUserInstallation(ctx, userToken, installationID); err != nil {
+	repositories, err := c.listUserInstallationRepositories(ctx, userToken, installationID)
+	if err != nil {
 		return err
 	}
-	path := fmt.Sprintf("/user/installations/%d/repositories?per_page=100", installationID)
-	var out struct {
-		Repositories []githubRepo `json:"repositories"`
-	}
-	if err := c.requestJSON(ctx, http.MethodGet, path, userToken, nil, &out); err != nil {
-		return err
-	}
-	for _, repo := range out.Repositories {
+	for _, repo := range repositories {
 		if strings.EqualFold(repo.FullName, repository) {
 			return nil
 		}
@@ -179,7 +179,7 @@ func (c *GitHubAppClient) requestJSON(ctx context.Context, method, path, token s
 	}
 	var reader io.Reader
 	if body != nil {
-		reader = strings.NewReader(string(body))
+		reader = bytes.NewReader(body)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
 	if err != nil {

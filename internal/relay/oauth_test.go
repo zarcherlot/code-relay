@@ -25,7 +25,7 @@ func TestOAuthPKCEAndEncryptedSession(t *testing.T) {
 	}))
 	defer provider.Close()
 
-	service, err := NewOAuthService(OAuthConfig{ClientID: "client", ClientSecret: "secret", RedirectURL: "https://relay.example/auth/github/callback", SessionSecret: strings.Repeat("s", 32), AppSlug: "code-relay", GitHubOAuthURL: provider.URL, GitHubAPIURL: provider.URL, SecureCookies: false})
+	service, err := NewOAuthService(OAuthConfig{ClientID: "client", ClientSecret: "secret", RedirectURL: "https://relay.example/auth/github/callback", SessionSecret: strings.Repeat("s", 32), AppSlug: "code-relay", GitHubOAuthURL: " " + provider.URL + " ", GitHubAPIURL: " " + provider.URL + " ", SecureCookies: false})
 	if err != nil {
 		t.Fatal(err)
 	}

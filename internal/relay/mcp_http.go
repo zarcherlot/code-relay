@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -81,14 +80,20 @@ func MCPHTTPHandler(config MCPHTTPConfig) (http.Handler, error) {
 }
 
 func defaultRemoteMCPTools() map[string]bool {
-	return map[string]bool{
-		"bind_project":  true,
-		"doctor":        true,
-		"publish_task":  true,
-		"status":        true,
-		"fetch_receipt": true,
-		"analyze":       true,
+	tools := make(map[string]bool, len(remoteToolNames))
+	for name := range remoteToolNames {
+		tools[name] = true
 	}
+	return tools
+}
+
+var remoteToolNames = map[string]struct{}{
+	"bind_project":  {},
+	"doctor":        {},
+	"publish_task":  {},
+	"status":        {},
+	"fetch_receipt": {},
+	"analyze":       {},
 }
 
 type mcpHTTPHandler struct {
@@ -204,7 +209,7 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		response = handleMCP(request)
 	}
-	h.config.AuditLogger.Info("mcp tool request", "subject", session.Subject, "login", session.Login, "method", request.Method, "tool", requestToolName(request), "ok", response != nil && response["error"] == nil, "duration_ms", time.Since(started).Milliseconds())
+	h.config.AuditLogger.Info("mcp tool request", "subject", clientID, "login", session.Login, "method", request.Method, "tool", requestToolName(request), "ok", response != nil && response["error"] == nil, "duration_ms", time.Since(started).Milliseconds())
 	if response != nil && (request.HasID || request.JSONRPC != "2.0" || request.Method == "") {
 		h.writeMCP(w, response)
 	}
@@ -274,7 +279,7 @@ func (h *mcpHTTPHandler) filteredTools() []map[string]any {
 func remoteMCPToolSchemas(tools []map[string]any) []map[string]any {
 	for _, tool := range tools {
 		name, _ := tool["name"].(string)
-		if name == "bind_project" || name == "doctor" || name == "publish_task" || name == "status" || name == "fetch_receipt" || name == "analyze" {
+		if _, ok := remoteToolNames[name]; ok {
 			if schema, ok := tool["inputSchema"].(map[string]any); ok {
 				if props, ok := schema["properties"].(map[string]any); ok {
 					delete(props, "root")
@@ -353,12 +358,4 @@ func clientAddress(r *http.Request) string {
 		return host
 	}
 	return r.RemoteAddr
-}
-
-func parseMCPInt(value string, fallback int) int {
-	n, err := strconv.Atoi(strings.TrimSpace(value))
-	if err != nil || n <= 0 {
-		return fallback
-	}
-	return n
 }

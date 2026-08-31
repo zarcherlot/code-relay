@@ -47,24 +47,7 @@ func (b *GitHubRemoteBackend) SetAllowedRefs(values []string) {
 }
 
 func (b *GitHubRemoteBackend) Call(ctx context.Context, session OAuthSession, name string, args map[string]any) (any, error) {
-	repository, err := normalizeRepository(stringArg(args, "repository"))
-	if err != nil {
-		return nil, err
-	}
-	ref, err := normalizeRef(stringArg(args, "ref"))
-	if err != nil {
-		return nil, err
-	}
-	if len(b.AllowedRefs) > 0 && !b.AllowedRefs[repository+"@"+ref] && !b.AllowedRefs[ref] {
-		return nil, errors.New("repository/ref is not allowed by the hosted policy")
-	}
-	if session.InstallationID <= 0 {
-		return nil, errors.New("请先完成 GitHub App 安装并绑定 installation")
-	}
-	if err := b.App.UserCanAccessRepository(ctx, session.AccessToken, session.InstallationID, repository); err != nil {
-		return nil, err
-	}
-	repo, err := b.App.Repository(ctx, session.InstallationID, repository)
+	repo, repository, ref, err := b.authorizedRepository(ctx, session, args)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +113,31 @@ func (b *GitHubRemoteBackend) Call(ctx context.Context, session OAuthSession, na
 	default:
 		return nil, fmt.Errorf("remote tool is not supported: %s", name)
 	}
+}
+
+func (b *GitHubRemoteBackend) authorizedRepository(ctx context.Context, session OAuthSession, args map[string]any) (*GitHubRepositoryClient, string, string, error) {
+	repository, err := normalizeRepository(stringArg(args, "repository"))
+	if err != nil {
+		return nil, "", "", err
+	}
+	ref, err := normalizeRef(stringArg(args, "ref"))
+	if err != nil {
+		return nil, "", "", err
+	}
+	if len(b.AllowedRefs) > 0 && !b.AllowedRefs[repository+"@"+ref] && !b.AllowedRefs[ref] {
+		return nil, "", "", errors.New("repository/ref is not allowed by the hosted policy")
+	}
+	if session.InstallationID <= 0 {
+		return nil, "", "", errors.New("请先完成 GitHub App 安装并绑定 installation")
+	}
+	if err := b.App.UserCanAccessRepository(ctx, session.AccessToken, session.InstallationID, repository); err != nil {
+		return nil, "", "", err
+	}
+	repo, err := b.App.Repository(ctx, session.InstallationID, repository)
+	if err != nil {
+		return nil, "", "", err
+	}
+	return repo, repository, ref, nil
 }
 
 func (b *GitHubRemoteBackend) fetchReceipt(ctx context.Context, repo *GitHubRepositoryClient, repository, ref, id string) (Receipt, error) {

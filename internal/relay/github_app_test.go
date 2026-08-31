@@ -23,12 +23,14 @@ func testPrivateKeyPEM(t *testing.T) []byte {
 func TestGitHubAppRepositoryAPI(t *testing.T) {
 	var putBody string
 	var dispatchBody string
+	var installationListCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == "" {
 			t.Fatal("missing authorization")
 		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/user/installations/42/repositories":
+			installationListCalls++
 			_, _ = w.Write([]byte(`{"repositories":[{"full_name":"acme/demo"}]}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/42/access_tokens":
 			_, _ = w.Write([]byte(`{"token":"installation-token","expires_at":"2030-01-01T00:00:00Z"}`))
@@ -57,6 +59,9 @@ func TestGitHubAppRepositoryAPI(t *testing.T) {
 	}
 	if err := app.UserCanAccessRepository(t.Context(), "user-token", 42, "acme/demo"); err != nil {
 		t.Fatal(err)
+	}
+	if installationListCalls != 1 {
+		t.Fatalf("expected one installation repository lookup, got %d", installationListCalls)
 	}
 	repo, err := app.Repository(t.Context(), 42, "acme/demo")
 	if err != nil {

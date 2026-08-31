@@ -66,9 +66,13 @@ func main() {
 			fatal("configure remote backend: %v", backendErr)
 		}
 		backend.SetAllowedRefs(splitCSV(os.Getenv("CODE_RELAY_ALLOWED_REFS")))
+		oauthClientSecret, secretErr := envSecret("CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET", "CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET_FILE")
+		if secretErr != nil {
+			fatal("configure GitHub OAuth client secret: %v", secretErr)
+		}
 		oauth, oauthErr := relay.NewOAuthService(relay.OAuthConfig{
 			ClientID:       os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID"),
-			ClientSecret:   os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET"),
+			ClientSecret:   oauthClientSecret,
 			RedirectURL:    os.Getenv("CODE_RELAY_GITHUB_OAUTH_REDIRECT_URL"),
 			SessionSecret:  os.Getenv("CODE_RELAY_SESSION_SECRET"),
 			AppSlug:        os.Getenv("CODE_RELAY_GITHUB_APP_SLUG"),
@@ -144,6 +148,25 @@ func splitCSV(value string) []string {
 		}
 	}
 	return result
+}
+
+func envSecret(valueName, fileName string) (string, error) {
+	if value := strings.TrimSpace(os.Getenv(valueName)); value != "" {
+		return value, nil
+	}
+	path := strings.TrimSpace(os.Getenv(fileName))
+	if path == "" {
+		return "", nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", fileName, err)
+	}
+	value := strings.TrimSpace(string(data))
+	if value == "" {
+		return "", fmt.Errorf("%s is empty", fileName)
+	}
+	return value, nil
 }
 
 func fatal(format string, args ...any) {

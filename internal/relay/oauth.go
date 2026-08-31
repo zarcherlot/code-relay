@@ -85,6 +85,8 @@ func NewOAuthService(config OAuthConfig) (*OAuthService, error) {
 	config.RedirectURL = strings.TrimSpace(config.RedirectURL)
 	config.SessionSecret = strings.TrimSpace(config.SessionSecret)
 	config.AppSlug = strings.TrimSpace(config.AppSlug)
+	config.GitHubOAuthURL = strings.TrimSpace(config.GitHubOAuthURL)
+	config.GitHubAPIURL = strings.TrimSpace(config.GitHubAPIURL)
 	if config.GitHubOAuthURL == "" {
 		config.GitHubOAuthURL = defaultGitHubOAuthURL
 	}
