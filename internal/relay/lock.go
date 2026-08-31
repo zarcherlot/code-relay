@@ -10,18 +10,18 @@ import (
 	"time"
 )
 
-type taskLock struct {
+type runbookLock struct {
 	path string
 }
 
-func acquireTaskLock(root, taskID string, timeout time.Duration) (*taskLock, error) {
+func acquireRunbookLock(root, runbookID string, timeout time.Duration) (*runbookLock, error) {
 	name := strings.Map(func(r rune) rune {
 		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-' {
 			return r
 		}
 		return '_'
-	}, taskID)
-	path, err := projectPath(root, newMeta, "locks", "task-"+name+".lock")
+	}, runbookID)
+	path, err := projectPath(root, newMeta, "locks", "runbook-"+name+".lock")
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func acquireTaskLock(root, taskID string, timeout time.Duration) (*taskLock, err
 			_ = json.NewEncoder(file).Encode(map[string]any{"pid": os.Getpid(), "created_at": time.Now().Unix()})
 			_ = file.Sync()
 			_ = file.Close()
-			return &taskLock{path: path}, nil
+			return &runbookLock{path: path}, nil
 		}
 		if !errors.Is(err, os.ErrExist) {
 			return nil, err
@@ -45,13 +45,13 @@ func acquireTaskLock(root, taskID string, timeout time.Duration) (*taskLock, err
 			continue
 		}
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("task lock is busy: %s", filepath.Base(path))
+			return nil, fmt.Errorf("runbook lock is busy: %s", filepath.Base(path))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 }
 
-func (lock *taskLock) release() {
+func (lock *runbookLock) release() {
 	if lock != nil && lock.path != "" {
 		_ = os.Remove(lock.path)
 	}

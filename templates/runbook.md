@@ -1,5 +1,5 @@
-# Task
-- task_id: task-001
+# Runbook
+- runbook_id: runbook-001
 - source_commit: <merged-commit-sha>
 - target: B
 - objective: 用一句话描述本轮目标

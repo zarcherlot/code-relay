@@ -11,7 +11,7 @@ import (
 	"github.com/zarcherlot/code-relay/internal/relay"
 )
 
-var version = "2.0.0"
+var version = "3.0.0"
 
 func main() {
 	relay.SetVersion(version)
@@ -57,22 +57,22 @@ func main() {
 				os.Exit(1)
 			}
 		}
-	case "validate-task":
+	case "validate-runbook":
 		if len(args) == 0 {
-			err = fmt.Errorf("缺少 task.md 路径")
+			err = fmt.Errorf("缺少 runbook.md 路径")
 		} else {
-			err = relay.ValidateTaskFile(args[0])
+			err = relay.ValidateRunbookFile(args[0])
 		}
-	case "run-task":
-		fs := flag.NewFlagSet("run-task", flag.ContinueOnError)
+	case "run-runbook":
+		fs := flag.NewFlagSet("run-runbook", flag.ContinueOnError)
 		timeout := fs.Int("timeout", 600, "验证超时秒数")
 		worktree := fs.String("worktree", "", "验证工作目录")
 		_ = fs.Parse(args)
 		if fs.NArg() == 0 {
-			err = fmt.Errorf("缺少 task ID")
+			err = fmt.Errorf("缺少 runbook ID")
 		} else {
 			var receipt relay.Receipt
-			receipt, err = relay.RunTask(root, fs.Arg(0), *timeout, *worktree)
+			receipt, err = relay.RunRunbook(root, fs.Arg(0), *timeout, *worktree)
 			if err == nil {
 				err = relay.PersistReceipt(root, receipt)
 			}
@@ -85,7 +85,7 @@ func main() {
 		}
 	case "bind-project", "project-bind":
 		fs := flag.NewFlagSet("bind-project", flag.ContinueOnError)
-		role := fs.String("role", "", "orchestrator 或 verifier")
+		role := fs.String("role", "", "orchestrator 或 checkpoint")
 		ref := fs.String("ref", "", "refs/heads/<branch>")
 		_ = fs.Parse(args)
 		var value map[string]any
@@ -121,7 +121,7 @@ func main() {
 			if *destination != "" {
 				value, err = relay.CloneAndJoin(root, fs.Arg(0), *destination)
 			} else {
-				value, err = relay.JoinVerifier(root, fs.Arg(0))
+				value, err = relay.JoinCheckpoint(root, fs.Arg(0))
 			}
 			if err == nil {
 				printJSON(value)
@@ -129,16 +129,16 @@ func main() {
 		}
 	case "publish":
 		fs := flag.NewFlagSet("publish", flag.ContinueOnError)
-		file := fs.String("file", "", "task.md 路径")
-		taskID := fs.String("task-id", "", "任务 ID")
+		file := fs.String("file", "", "runbook.md 路径")
+		runbookID := fs.String("runbook-id", "", "runbook ID")
 		source := fs.String("source-commit", "", "源 commit SHA")
 		target := fs.String("target", "B", "验证目标")
-		objective := fs.String("objective", "", "任务目标")
+		objective := fs.String("objective", "", "runbook 目标")
 		validation := multiStringFlag{}
 		expected := multiStringFlag{}
 		fs.Var(&validation, "validation", "验证命令（可重复）")
 		fs.Var(&expected, "expected", "预期结果（可重复）")
-		force := fs.Bool("force", false, "允许覆盖相同任务 ID")
+		force := fs.Bool("force", false, "允许覆盖相同 runbook ID")
 		noGit := fs.Bool("no-git", false, "不执行 git add/commit/push")
 		_ = fs.Parse(args)
 		var markdown string
@@ -149,14 +149,14 @@ func main() {
 			} else {
 				markdown = string(data)
 			}
-		} else if *taskID == "" || *source == "" || *objective == "" || len(validation) == 0 {
-			err = fmt.Errorf("publish 需要 --file，或同时提供 --task-id/--source-commit/--objective/--validation")
+		} else if *runbookID == "" || *source == "" || *objective == "" || len(validation) == 0 {
+			err = fmt.Errorf("publish 需要 --file，或同时提供 --runbook-id/--source-commit/--objective/--validation")
 		} else {
 			if len(expected) == 0 {
 				expected = append(expected, "验证命令全部成功")
 			}
 			var b strings.Builder
-			fmt.Fprintf(&b, "# Task\n- task_id: %s\n- source_commit: %s\n- target: %s\n- objective: %s\n\n## Validation Plan\n", *taskID, *source, *target, *objective)
+			fmt.Fprintf(&b, "# Runbook\n- runbook_id: %s\n- source_commit: %s\n- target: %s\n- objective: %s\n\n## Validation Plan\n", *runbookID, *source, *target, *objective)
 			for i, item := range validation {
 				fmt.Fprintf(&b, "%d. %s\n", i+1, item)
 			}
@@ -169,14 +169,14 @@ func main() {
 		}
 		if err == nil {
 			var value map[string]any
-			value, err = relay.PublishTask(root, markdown, *force, *noGit)
+			value, err = relay.PublishRunbook(root, markdown, *force, *noGit)
 			if err == nil {
 				printJSON(value)
 			}
 		}
 	case "fetch-receipt":
 		if len(args) == 0 {
-			err = fmt.Errorf("缺少 task ID")
+			err = fmt.Errorf("缺少 runbook ID")
 		} else {
 			var value relay.Receipt
 			value, err = relay.FetchReceipt(root, args[0])
@@ -186,7 +186,7 @@ func main() {
 		}
 	case "analyze":
 		if len(args) == 0 {
-			err = fmt.Errorf("缺少 task ID")
+			err = fmt.Errorf("缺少 runbook ID")
 		} else {
 			var value map[string]any
 			value, err = relay.Analyze(root, args[0])
@@ -196,7 +196,7 @@ func main() {
 		}
 	case "run-pending":
 		fs := flag.NewFlagSet("run-pending", flag.ContinueOnError)
-		timeout := fs.Int("timeout", 600, "单任务验证超时秒数")
+		timeout := fs.Int("timeout", 600, "单份 runbook 验证超时秒数")
 		_ = fs.Parse(args)
 		var value []map[string]any
 		value, err = relay.RunPending(root, *timeout)
@@ -212,7 +212,7 @@ func main() {
 		err = relay.Watch(root, *interval)
 	case "daemon":
 		fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
-		role := fs.String("role", "verifier", "orchestrator 或 verifier")
+		role := fs.String("role", "checkpoint", "orchestrator 或 checkpoint")
 		interval := fs.Float64("poll-interval", 5, "轮询间隔")
 		addr := fs.String("addr", "127.0.0.1:8765", "Webhook 监听地址")
 		_ = fs.Parse(args)
@@ -229,7 +229,7 @@ func main() {
 
 func printJSON(value any) { data, _ := json.MarshalIndent(value, "", "  "); fmt.Println(string(data)) }
 func usage() {
-	fmt.Println("Code Relay agent: mcp-stdio | bind-project | invite | join | publish | status | fetch-receipt | analyze | validate-task | run-task | run-pending | publish-receipts | watcher | daemon | doctor")
+	fmt.Println("Code Relay agent: mcp-stdio | bind-project | invite | join | publish | status | fetch-receipt | analyze | validate-runbook | run-runbook | run-pending | publish-receipts | watcher | daemon | doctor")
 }
 
 type multiStringFlag []string

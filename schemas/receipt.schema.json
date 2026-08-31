@@ -4,15 +4,15 @@
   "title": "Code Relay verification receipt",
   "type": "object",
   "additionalProperties": true,
-  "required": ["task_id", "source_commit", "status", "checks"],
+  "required": ["runbook_id", "source_commit", "status", "checks"],
   "properties": {
-    "task_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+    "runbook_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
     "source_commit": {"type": "string", "pattern": "^[a-fA-F0-9]{7,64}$"},
     "status": {"enum": ["passed", "failed", "blocked"]},
     "checks": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/check"}},
     "risks": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 8192}},
     "next_actions": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 8192}},
-    "task_sha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+    "runbook_sha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
     "verified_at": {"type": "string"},
     "environment": {"type": "object"}
   },

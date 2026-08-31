@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-func validRemoteTask() string {
-	return "- task_id: remote-1\n- source_commit: 0123456789abcdef0123456789abcdef01234567\n- target: remote\n- objective: verify remote publishing\n\n## Validation Plan\n1. run checks\n\n## Expected Results\n- checks pass\n"
+func validRemoteRunbook() string {
+	return "- runbook_id: remote-1\n- source_commit: 0123456789abcdef0123456789abcdef01234567\n- target: remote\n- objective: verify remote publishing\n\n## Validation Plan\n1. run checks\n\n## Expected Results\n- checks pass\n"
 }
 
 func TestGitHubRemotePublishAndDispatch(t *testing.T) {
@@ -22,13 +22,13 @@ func TestGitHubRemotePublishAndDispatch(t *testing.T) {
 			_, _ = w.Write([]byte(`{"repositories":[{"full_name":"acme/demo"}]}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/7/access_tokens":
 			_, _ = w.Write([]byte(`{"token":"installation-token","expires_at":"2030-01-01T00:00:00Z"}`))
-		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo/contents/tasks/remote-1/task.md":
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo/contents/runbooks/remote-1/runbook.md":
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
-		case r.Method == http.MethodPut && r.URL.Path == "/repos/acme/demo/contents/tasks/remote-1/task.md":
+		case r.Method == http.MethodPut && r.URL.Path == "/repos/acme/demo/contents/runbooks/remote-1/runbook.md":
 			putSeen = true
 			w.WriteHeader(http.StatusCreated)
-		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/demo/actions/workflows/verify-on-b.yml/dispatches":
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/demo/actions/workflows/checkpoint.yml/dispatches":
 			dispatchSeen = true
 			w.WriteHeader(http.StatusNoContent)
 		default:
@@ -40,11 +40,11 @@ func TestGitHubRemotePublishAndDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend, err := NewGitHubRemoteBackend(app, "verify-on-b.yml")
+	backend, err := NewGitHubRemoteBackend(app, "checkpoint.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := backend.Call(context.Background(), OAuthSession{Subject: "17", Login: "alice", AccessToken: "user-token", InstallationID: 7}, "publish_task", map[string]any{"repository": "acme/demo", "ref": "refs/heads/main", "markdown": validRemoteTask()})
+	value, err := backend.Call(context.Background(), OAuthSession{Subject: "17", Login: "alice", AccessToken: "user-token", InstallationID: 7}, "publish_runbook", map[string]any{"repository": "acme/demo", "ref": "refs/heads/main", "markdown": validRemoteRunbook()})
 	if err != nil {
 		t.Fatal(err)
 	}

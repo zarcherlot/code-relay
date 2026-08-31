@@ -36,6 +36,6 @@ CI additionally runs the race detector on Linux. The packaging command builds th
 
 - One binding means one canonical repository and one remote branch.
 - B must never silently overwrite an existing workspace or active worktree.
-- Tasks and receipts are immutable, source-commit-bound records.
+- Runbooks and receipts are immutable, source-commit-bound records.
 - Failed and blocked validation must produce an explicit receipt.
 - Dangerous commands require a deliberate product decision; they are not enabled by convenience.

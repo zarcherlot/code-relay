@@ -1,7 +1,7 @@
 package relay
 
 // This file contains the user-facing orchestration operations.  They are
-// deliberately implemented in the same Go binary as the verifier so the
+// deliberately implemented in the same Go binary as the checkpoint so the
 // plugin has no language runtime dependency.
 
 import (
@@ -19,6 +19,11 @@ import (
 	"sort"
 	"strings"
 	"time"
+)
+
+const (
+	bindingSchemaVersion = 2
+	inviteVersion        = 2
 )
 
 var inviteNonce = regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`)
@@ -44,8 +49,8 @@ func currentRef(root string) (string, error) {
 }
 
 func BindProject(root, role, ref string) (map[string]any, error) {
-	if role != "orchestrator" && role != "verifier" {
-		return nil, errors.New("role 必须是 orchestrator 或 verifier")
+	if role != "orchestrator" && role != "checkpoint" {
+		return nil, errors.New("role 必须是 orchestrator 或 checkpoint")
 	}
 	root, err := pathWithinRoot(root, root)
 	if err != nil {
@@ -68,10 +73,10 @@ func BindProject(root, role, ref string) (map[string]any, error) {
 	if !branchRef.MatchString(ref) || strings.Contains(ref, "..") || strings.Contains(ref, "//") || strings.HasSuffix(ref, "/") {
 		return nil, errors.New("只允许绑定合法的 refs/heads/<branch>")
 	}
-	config := map[string]any{"schema_version": 1, "repository": repository, "ref": ref, "task_path": "tasks/**", "role": role, "created_at": now()}
+	config := map[string]any{"schema_version": bindingSchemaVersion, "repository": repository, "ref": ref, "runbook_path": "runbooks/**", "role": role, "created_at": now()}
 	name := "project.json"
-	if role == "verifier" {
-		name = "verifier.json"
+	if role == "checkpoint" {
+		name = "checkpoint.json"
 	}
 	configPath, err := projectPath(root, newMeta, name)
 	if err != nil {
@@ -80,7 +85,7 @@ func BindProject(root, role, ref string) (map[string]any, error) {
 	if err := writePrivateJSON(configPath, config); err != nil {
 		return nil, err
 	}
-	for _, dir := range []string{"tasks", "receipts"} {
+	for _, dir := range []string{"runbooks", "receipts"} {
 		path, pathErr := projectPath(root, dir)
 		if pathErr != nil {
 			return nil, pathErr
@@ -122,7 +127,7 @@ func CreateInvite(root string, expiresMinutes int, oneTime bool) (map[string]any
 		return nil, errors.New("当前工程不是有效的 orchestrator 绑定")
 	}
 	var project map[string]any
-	if err := json.Unmarshal(data, &project); err != nil || project["role"] != "orchestrator" {
+	if err := json.Unmarshal(data, &project); err != nil || project["schema_version"] != float64(bindingSchemaVersion) || project["role"] != "orchestrator" || project["runbook_path"] != "runbooks/**" {
 		return nil, errors.New("当前工程不是有效的 orchestrator 绑定")
 	}
 	ref, _ := project["ref"].(string)
@@ -131,7 +136,7 @@ func CreateInvite(root string, expiresMinutes int, oneTime bool) (map[string]any
 		return nil, errors.New("绑定配置非法")
 	}
 	nonce := randomToken(18)
-	payload := map[string]any{"v": 1, "repository": repository, "ref": ref, "task_path": "tasks/**", "mode": "codex", "nonce": nonce, "one_time": oneTime, "expires_at": time.Now().UTC().Add(time.Duration(expiresMinutes) * time.Minute).Truncate(time.Second).Format(time.RFC3339)}
+	payload := map[string]any{"v": inviteVersion, "repository": repository, "ref": ref, "runbook_path": "runbooks/**", "mode": "codex", "nonce": nonce, "one_time": oneTime, "expires_at": time.Now().UTC().Add(time.Duration(expiresMinutes) * time.Minute).Truncate(time.Second).Format(time.RFC3339)}
 	if secret := os.Getenv("CODE_RELAY_INVITE_SECRET"); secret != "" {
 		if len(secret) < 32 {
 			return nil, errors.New("CODE_RELAY_INVITE_SECRET 至少需要 32 个字符")
@@ -173,13 +178,13 @@ func DecodeInvite(value string) (map[string]any, error) {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, errors.New("无效的 Code Relay 加入链接")
 	}
-	if payload["v"] != float64(1) || payload["mode"] != "codex" {
+	if payload["v"] != float64(inviteVersion) || payload["mode"] != "codex" {
 		return nil, errors.New("加入链接缺少必要绑定信息")
 	}
 	ref, _ := payload["ref"].(string)
 	nonce, _ := payload["nonce"].(string)
 	repository, _ := payload["repository"].(string)
-	if !branchRef.MatchString(ref) || !inviteNonce.MatchString(nonce) || repository == "" || payload["task_path"] != "tasks/**" {
+	if !branchRef.MatchString(ref) || !inviteNonce.MatchString(nonce) || repository == "" || payload["runbook_path"] != "runbooks/**" {
 		return nil, errors.New("加入链接包含不支持的绑定范围")
 	}
 	if expires, ok := payload["expires_at"].(string); ok {
@@ -206,7 +211,7 @@ func DecodeInvite(value string) (map[string]any, error) {
 	return payload, nil
 }
 
-func JoinVerifier(root, invite string) (map[string]any, error) {
+func JoinCheckpoint(root, invite string) (map[string]any, error) {
 	payload, err := DecodeInvite(invite)
 	if err != nil {
 		return nil, err
@@ -226,10 +231,10 @@ func JoinVerifier(root, invite string) (map[string]any, error) {
 	if err != nil || ref != payload["ref"] {
 		return nil, errors.New("当前工程分支不匹配")
 	}
-	config := map[string]any{"schema_version": 1, "verifier_id": "b-" + randomToken(4), "repository": payload["repository"], "ref": payload["ref"], "task_path": "tasks/**", "mode": "codex", "runtime": "go", "joined_at": now()}
+	config := map[string]any{"schema_version": bindingSchemaVersion, "checkpoint_id": "b-" + randomToken(4), "repository": payload["repository"], "ref": payload["ref"], "runbook_path": "runbooks/**", "mode": "codex", "runtime": "go", "joined_at": now()}
 	// Serialize the consumed-invite read/check/write sequence so a one-time
 	// nonce cannot be accepted by two concurrent join requests.
-	inviteLock, lockErr := acquireTaskLock(root, "invite-consumption", 10*time.Second)
+	inviteLock, lockErr := acquireRunbookLock(root, "invite-consumption", 10*time.Second)
 	if lockErr != nil {
 		return nil, lockErr
 	}
@@ -254,14 +259,14 @@ func JoinVerifier(root, invite string) (map[string]any, error) {
 			return nil, err
 		}
 	}
-	verifierPath, err := projectPath(root, newMeta, "verifier.json")
+	checkpointPath, err := projectPath(root, newMeta, "checkpoint.json")
 	if err != nil {
 		return nil, err
 	}
-	if err := writePrivateJSON(verifierPath, config); err != nil {
+	if err := writePrivateJSON(checkpointPath, config); err != nil {
 		return nil, err
 	}
-	for _, dir := range []string{"tasks", "receipts"} {
+	for _, dir := range []string{"runbooks", "receipts"} {
 		path, pathErr := projectPath(root, dir)
 		if pathErr != nil {
 			return nil, pathErr
@@ -301,34 +306,34 @@ func CloneAndJoin(root, invite, destination string) (map[string]any, error) {
 	if _, err := runGit(root, gitTimeout*4, "clone", "--branch", branch, "--single-branch", payload["repository"].(string), target); err != nil {
 		return nil, err
 	}
-	return JoinVerifier(target, invite)
+	return JoinCheckpoint(target, invite)
 }
 
-func PublishTask(root, markdown string, force, noGit bool) (map[string]any, error) {
-	task, err := parseTask(markdown)
+func PublishRunbook(root, markdown string, force, noGit bool) (map[string]any, error) {
+	runbook, err := parseRunbook(markdown)
 	if err != nil {
 		return nil, err
 	}
-	destination, err := projectPath(root, "tasks", task.ID, "task.md")
+	destination, err := projectPath(root, "runbooks", runbook.ID, "runbook.md")
 	if err != nil {
 		return nil, err
 	}
 	if existing, readErr := os.ReadFile(destination); readErr == nil && !force && string(existing) != markdown {
-		return nil, fmt.Errorf("任务已存在且内容不同: %s", task.ID)
+		return nil, fmt.Errorf("runbook 已存在且内容不同: %s", runbook.ID)
 	}
 	if err := atomicJSONText(destination, []byte(markdown)); err != nil {
 		return nil, err
 	}
 	if !noGit {
-		if _, err := runGit(root, gitTimeout, "add", filepath.Join("tasks", task.ID, "task.md")); err != nil {
+		if _, err := runGit(root, gitTimeout, "add", filepath.Join("runbooks", runbook.ID, "runbook.md")); err != nil {
 			return nil, err
 		}
-		changed, err := stagedChanges(root, filepath.Join("tasks", task.ID, "task.md"))
+		changed, err := stagedChanges(root, filepath.Join("runbooks", runbook.ID, "runbook.md"))
 		if err != nil {
 			return nil, err
 		}
 		if changed {
-			if _, err := runGit(root, gitTimeout, "commit", "-m", "code-relay: publish "+task.ID); err != nil {
+			if _, err := runGit(root, gitTimeout, "commit", "-m", "code-relay: publish "+runbook.ID); err != nil {
 				return nil, err
 			}
 		}
@@ -336,11 +341,11 @@ func PublishTask(root, markdown string, force, noGit bool) (map[string]any, erro
 			return nil, err
 		}
 	}
-	return map[string]any{"task_id": task.ID, "path": destination, "source_commit": task.SourceCommit}, nil
+	return map[string]any{"runbook_id": runbook.ID, "path": destination, "source_commit": runbook.SourceCommit}, nil
 }
 
 func FetchReceipt(root, id string) (Receipt, error) {
-	if err := validateTaskID(id); err != nil {
+	if err := validateRunbookID(id); err != nil {
 		return Receipt{}, err
 	}
 	path, err := projectPath(root, "receipts", id, "receipt.json")
@@ -351,19 +356,19 @@ func FetchReceipt(root, id string) (Receipt, error) {
 	if err := readJSON(path, &receipt); err != nil {
 		return receipt, err
 	}
-	taskPath, err := projectPath(root, "tasks", id, "task.md")
+	runbookPath, err := projectPath(root, "runbooks", id, "runbook.md")
 	if err != nil {
 		return receipt, err
 	}
-	taskRaw, err := os.ReadFile(taskPath)
+	runbookRaw, err := os.ReadFile(runbookPath)
 	if err != nil {
 		return receipt, err
 	}
-	task, err := parseTask(string(taskRaw))
+	runbook, err := parseRunbook(string(runbookRaw))
 	if err != nil {
 		return receipt, err
 	}
-	return receipt, validateReceipt(receipt, task)
+	return receipt, validateReceipt(receipt, runbook)
 }
 
 func Analyze(root, id string) (map[string]any, error) {
@@ -378,12 +383,12 @@ func Analyze(root, id string) (map[string]any, error) {
 		}
 	}
 	if receipt.Status == "passed" && len(failed) == 0 {
-		return map[string]any{"task_id": id, "conclusion": "done", "summary": "B 验证全部通过，任务完成。", "next_actions": receipt.NextActions}, nil
+		return map[string]any{"runbook_id": id, "conclusion": "done", "summary": "B 验证全部通过，runbook 完成。", "next_actions": receipt.NextActions}, nil
 	}
 	if receipt.Status == "blocked" {
-		return map[string]any{"task_id": id, "conclusion": "blocked", "summary": "B 验证被阻塞，需要用户决策。", "next_actions": receipt.NextActions}, nil
+		return map[string]any{"runbook_id": id, "conclusion": "blocked", "summary": "B 验证被阻塞，需要用户决策。", "next_actions": receipt.NextActions}, nil
 	}
-	return map[string]any{"task_id": id, "conclusion": "iterate", "summary": fmt.Sprintf("B 验证失败 %d 项，建议启动下一轮任务。", len(failed)), "failed_checks": failed, "next_actions": receipt.NextActions}, nil
+	return map[string]any{"runbook_id": id, "conclusion": "iterate", "summary": fmt.Sprintf("B 验证失败 %d 项，建议发布下一版 runbook。", len(failed)), "failed_checks": failed, "next_actions": receipt.NextActions}, nil
 }
 
 func RunPending(root string, timeout int) ([]map[string]any, error) {
@@ -391,12 +396,12 @@ func RunPending(root string, timeout int) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	pendingLock, err := acquireTaskLock(root, "run-pending", 10*time.Second)
+	pendingLock, err := acquireRunbookLock(root, "run-pending", 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
 	defer pendingLock.release()
-	base, err := projectPath(root, "tasks")
+	base, err := projectPath(root, "runbooks")
 	if err != nil {
 		return nil, err
 	}
@@ -409,15 +414,15 @@ func RunPending(root string, timeout int) ([]map[string]any, error) {
 	}
 	var ids []string
 	for _, entry := range entries {
-		if entry.IsDir() && taskID.MatchString(entry.Name()) {
-			task, taskErr := readTask(root, entry.Name())
+		if entry.IsDir() && runbookID.MatchString(entry.Name()) {
+			runbook, runbookErr := readRunbook(root, entry.Name())
 			receiptPath, pathErr := projectPath(root, "receipts", entry.Name(), "receipt.json")
 			var receipt Receipt
 			receiptErr := pathErr
 			if receiptErr == nil {
 				receiptErr = readJSON(receiptPath, &receipt)
 			}
-			if taskErr != nil || receiptErr != nil || validateReceipt(receipt, task) != nil {
+			if runbookErr != nil || receiptErr != nil || validateReceipt(receipt, runbook) != nil {
 				ids = append(ids, entry.Name())
 			}
 		}
@@ -425,11 +430,11 @@ func RunPending(root string, timeout int) ([]map[string]any, error) {
 	sort.Strings(ids)
 	results := make([]map[string]any, 0, len(ids))
 	for _, id := range ids {
-		task, taskErr := readTask(root, id)
-		if taskErr != nil {
-			receipt := Receipt{TaskID: id, Status: "blocked", Checks: []Check{{Name: "任务协议", Expected: "task.md 通过协议校验", Actual: taskErr.Error(), Status: "blocked"}}, Risks: []string{"task.md 不符合 Code Relay 协议"}, NextActions: []string{"修正 task.md 后重新发布"}, VerifiedAt: now(), Environment: map[string]string{"platform": "protocol"}}
+		runbook, runbookErr := readRunbook(root, id)
+		if runbookErr != nil {
+			receipt := Receipt{RunbookID: id, Status: "blocked", Checks: []Check{{Name: "Runbook 协议", Expected: "runbook.md 通过协议校验", Actual: runbookErr.Error(), Status: "blocked"}}, Risks: []string{"runbook.md 不符合 Code Relay 协议"}, NextActions: []string{"修正 runbook.md 后重新发布"}, VerifiedAt: now(), Environment: map[string]string{"platform": "protocol"}}
 			persistErr := PersistReceipt(root, receipt)
-			row := map[string]any{"task_id": id, "status": receipt.Status}
+			row := map[string]any{"runbook_id": id, "status": receipt.Status}
 			if persistErr != nil {
 				row["error"] = persistErr.Error()
 			}
@@ -451,17 +456,17 @@ func RunPending(root string, timeout int) ([]map[string]any, error) {
 				return nil, removeErr
 			}
 		}
-		if _, addErr := runGit(root, gitTimeout, "worktree", "add", "--detach", worktree, task.SourceCommit); addErr != nil {
-			receipt := Receipt{TaskID: task.ID, SourceCommit: task.SourceCommit, Status: "blocked", Checks: []Check{{Name: "隔离 worktree", Expected: "可以检出 source_commit", Actual: addErr.Error(), Status: "blocked"}}, Risks: []string{"无法验证指定 source commit"}, NextActions: []string{"确认 source_commit 已推送且可访问"}, VerifiedAt: now(), Environment: map[string]string{"platform": "git"}, TaskSHA256: sha256Hex([]byte(task.Raw))}
+		if _, addErr := runGit(root, gitTimeout, "worktree", "add", "--detach", worktree, runbook.SourceCommit); addErr != nil {
+			receipt := Receipt{RunbookID: runbook.ID, SourceCommit: runbook.SourceCommit, Status: "blocked", Checks: []Check{{Name: "隔离 worktree", Expected: "可以检出 source_commit", Actual: addErr.Error(), Status: "blocked"}}, Risks: []string{"无法验证指定 source commit"}, NextActions: []string{"确认 source_commit 已推送且可访问"}, VerifiedAt: now(), Environment: map[string]string{"platform": "git"}, RunbookSHA256: sha256Hex([]byte(runbook.Raw))}
 			persistErr := PersistReceipt(root, receipt)
-			row := map[string]any{"task_id": id, "status": receipt.Status}
+			row := map[string]any{"runbook_id": id, "status": receipt.Status}
 			if persistErr != nil {
 				row["error"] = persistErr.Error()
 			}
 			results = append(results, row)
 			continue
 		}
-		receipt, runErr := RunTask(root, id, timeout, worktree)
+		receipt, runErr := RunRunbook(root, id, timeout, worktree)
 		if runErr == nil {
 			runErr = PersistReceipt(root, receipt)
 		}
@@ -470,7 +475,7 @@ func RunPending(root string, timeout int) ([]map[string]any, error) {
 		if runErr != nil {
 			status = "error"
 		}
-		row := map[string]any{"task_id": id, "status": status}
+		row := map[string]any{"runbook_id": id, "status": status}
 		if runErr != nil {
 			row["error"] = runErr.Error()
 		} else if cleanupErr != nil {
@@ -493,19 +498,19 @@ func cleanupWorktree(root, worktree string) error {
 	return runGitIgnore(root, "worktree", "prune")
 }
 
-func readTask(root, id string) (Task, error) {
-	if err := validateTaskID(id); err != nil {
-		return Task{}, err
+func readRunbook(root, id string) (Runbook, error) {
+	if err := validateRunbookID(id); err != nil {
+		return Runbook{}, err
 	}
-	path, err := projectPath(root, "tasks", id, "task.md")
+	path, err := projectPath(root, "runbooks", id, "runbook.md")
 	if err != nil {
-		return Task{}, err
+		return Runbook{}, err
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return Task{}, err
+		return Runbook{}, err
 	}
-	return parseTask(string(raw))
+	return parseRunbook(string(raw))
 }
 
 func runGitIgnore(root string, args ...string) error {
@@ -528,7 +533,7 @@ func PublishReceipts(root string) error {
 	if err != nil {
 		return err
 	}
-	publishLock, err := acquireTaskLock(root, "publish-receipts", 10*time.Second)
+	publishLock, err := acquireRunbookLock(root, "publish-receipts", 10*time.Second)
 	if err != nil {
 		return err
 	}
@@ -555,17 +560,17 @@ func PublishReceipts(root string) error {
 
 func receiptPublishRef(root string) (string, error) {
 	configured := ""
-	verifierPath, err := projectPath(root, newMeta, "verifier.json")
+	checkpointPath, err := projectPath(root, newMeta, "checkpoint.json")
 	if err != nil {
 		return "", err
 	}
-	var verifier map[string]any
-	if readJSON(verifierPath, &verifier) == nil {
-		configured, _ = verifier["ref"].(string)
+	var checkpoint map[string]any
+	if readJSON(checkpointPath, &checkpoint) == nil {
+		configured, _ = checkpoint["ref"].(string)
 	}
 	environmentRef := os.Getenv("GITHUB_REF")
 	if environmentRef != "" && configured != "" && environmentRef != configured {
-		return "", errors.New("GITHUB_REF 与 verifier 绑定分支不匹配")
+		return "", errors.New("GITHUB_REF 与 checkpoint 绑定分支不匹配")
 	}
 	ref := environmentRef
 	if ref == "" {

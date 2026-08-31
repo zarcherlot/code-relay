@@ -79,7 +79,7 @@ func TestMCPHTTPFiltersToolsAndPinsRoot(t *testing.T) {
 		if !ok || annotations["readOnlyHint"] == nil || annotations["openWorldHint"] == nil || annotations["destructiveHint"] == nil {
 			t.Fatalf("tool %s is missing MCP annotations", name)
 		}
-		if name == "join_verifier" || name == "create_verifier_invite" {
+		if name == "join_checkpoint" || name == "create_checkpoint_invite" {
 			t.Fatalf("unsafe remote tool advertised: %s", name)
 		}
 	}

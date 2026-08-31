@@ -75,10 +75,10 @@ func NewGitHubAppClient(config GitHubAppConfig) (*GitHubAppClient, error) {
 	return &GitHubAppClient{appID: config.AppID, privateKey: key, baseURL: strings.TrimRight(config.APIBaseURL, "/"), client: &http.Client{Timeout: 20 * time.Second}}, nil
 }
 
-// NewGitHubAppVerifier creates a client that can verify a user's installation
+// NewGitHubAppMembershipClient creates a client that can verify a user's installation
 // membership without requiring an app private key.  The full app client is
 // still required for repository operations.
-func NewGitHubAppVerifier(apiBaseURL string) *GitHubAppClient {
+func NewGitHubAppMembershipClient(apiBaseURL string) *GitHubAppClient {
 	if apiBaseURL == "" {
 		apiBaseURL = defaultGitHubAPIURL
 	}

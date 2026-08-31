@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -19,8 +20,8 @@ import (
 	"time"
 )
 
-const testTask = `# Task
-- task_id: go-test
+const testRunbook = `# Runbook
+- runbook_id: go-test
 - source_commit: abc1234
 - target: B
 - objective: smoke
@@ -32,20 +33,20 @@ const testTask = `# Task
 - exits successfully
 `
 
-func TestParseTaskAndRun(t *testing.T) {
+func TestParseRunbookAndRun(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "tasks", "go-test", "task.md")
+	path := filepath.Join(root, "runbooks", "go-test", "runbook.md")
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(testTask), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(testRunbook), 0600); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := RunTask(root, "go-test", 10, "")
+	receipt, err := RunRunbook(root, "go-test", 10, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.Status != "passed" || receipt.TaskID != "go-test" {
+	if receipt.Status != "passed" || receipt.RunbookID != "go-test" {
 		t.Fatalf("unexpected receipt: %+v", receipt)
 	}
 }
@@ -64,10 +65,10 @@ func TestUnsafeCommandBlocked(t *testing.T) {
 	}
 }
 
-func TestTaskIDTraversalRejected(t *testing.T) {
+func TestRunbookIDTraversalRejected(t *testing.T) {
 	root := t.TempDir()
-	if _, err := RunTask(root, "..", 5, ""); err == nil {
-		t.Fatal("expected run-task traversal rejection")
+	if _, err := RunRunbook(root, "..", 5, ""); err == nil {
+		t.Fatal("expected run-runbook traversal rejection")
 	}
 	if _, err := FetchReceipt(root, "../outside"); err == nil {
 		t.Fatal("expected fetch traversal rejection")
@@ -135,16 +136,16 @@ func TestStatusEmpty(t *testing.T) {
 	}
 }
 
-func TestInvalidTaskProducesBlockedReceipt(t *testing.T) {
+func TestInvalidRunbookProducesBlockedReceipt(t *testing.T) {
 	r := t.TempDir()
-	p := filepath.Join(r, "tasks", "broken", "task.md")
+	p := filepath.Join(r, "runbooks", "broken", "runbook.md")
 	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte("# Task\n- task_id: broken\n"), 0600); err != nil {
+	if err := os.WriteFile(p, []byte("# Runbook\n- runbook_id: broken\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := RunTask(r, "broken", 5, "")
+	receipt, err := RunRunbook(r, "broken", 5, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,15 +154,15 @@ func TestInvalidTaskProducesBlockedReceipt(t *testing.T) {
 	}
 }
 
-func TestTaskLockExcludesConcurrentExecution(t *testing.T) {
+func TestRunbookLockExcludesConcurrentExecution(t *testing.T) {
 	root := t.TempDir()
-	first, err := acquireTaskLock(root, "same-task", time.Second)
+	first, err := acquireRunbookLock(root, "same-runbook", time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.release()
-	if _, err := acquireTaskLock(root, "same-task", 50*time.Millisecond); err == nil {
-		t.Fatal("expected busy task lock")
+	if _, err := acquireRunbookLock(root, "same-runbook", 50*time.Millisecond); err == nil {
+		t.Fatal("expected busy runbook lock")
 	}
 }
 
@@ -226,46 +227,46 @@ func TestPolicyMatchesSharedDocument(t *testing.T) {
 }
 
 func TestExamplesMatchRuntimeProtocol(t *testing.T) {
-	markdown, err := os.ReadFile(filepath.Join("..", "..", "examples", "task-001.md"))
+	markdown, err := os.ReadFile(filepath.Join("..", "..", "examples", "runbook-001.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	task, err := parseTask(string(markdown))
+	runbook, err := parseRunbook(string(markdown))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var taskJSON struct {
-		ID     string `json:"task_id"`
+	var runbookJSON struct {
+		ID     string `json:"runbook_id"`
 		Source string `json:"source_commit"`
 	}
-	if err := readJSON(filepath.Join("..", "..", "examples", "task-001.json"), &taskJSON); err != nil {
+	if err := readJSON(filepath.Join("..", "..", "examples", "runbook-001.json"), &runbookJSON); err != nil {
 		t.Fatal(err)
 	}
-	if task.ID != taskJSON.ID || task.SourceCommit != taskJSON.Source {
-		t.Fatalf("task fixtures disagree: markdown=%+v json=%+v", task, taskJSON)
+	if runbook.ID != runbookJSON.ID || runbook.SourceCommit != runbookJSON.Source {
+		t.Fatalf("runbook fixtures disagree: markdown=%+v json=%+v", runbook, runbookJSON)
 	}
 	var receipt Receipt
 	if err := readJSON(filepath.Join("..", "..", "examples", "receipt-001.json"), &receipt); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateReceipt(receipt, task); err != nil {
+	if err := validateReceipt(receipt, runbook); err != nil {
 		t.Fatalf("receipt fixture is invalid: %v", err)
 	}
 }
 
 func TestReceiptBoundsAreEnforced(t *testing.T) {
-	task, err := parseTask(testTask)
+	runbook, err := parseRunbook(testRunbook)
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt := Receipt{TaskID: task.ID, SourceCommit: task.SourceCommit, Status: "passed", Checks: []Check{}, Risks: make([]string, 101)}
-	if err := validateReceipt(receipt, task); err == nil {
+	receipt := Receipt{RunbookID: runbook.ID, SourceCommit: runbook.SourceCommit, Status: "passed", Checks: []Check{}, Risks: make([]string, 101)}
+	if err := validateReceipt(receipt, runbook); err == nil {
 		t.Fatal("expected receipt risk bound rejection")
 	}
 	receipt.Risks = nil
-	receipt.TaskSHA256 = "not-a-sha"
-	if err := validateReceipt(receipt, task); err == nil {
-		t.Fatal("expected receipt task hash rejection")
+	receipt.RunbookSHA256 = "not-a-sha"
+	if err := validateReceipt(receipt, runbook); err == nil {
+		t.Fatal("expected receipt runbook hash rejection")
 	}
 }
 
@@ -280,8 +281,12 @@ func TestInviteRoundTrip(t *testing.T) {
 	if out, err := exec.Command("git", "-C", root, "checkout", "-b", "main").CombinedOutput(); err != nil {
 		t.Fatalf("git branch: %v (%s)", err, out)
 	}
-	if _, err := BindProject(root, "orchestrator", "refs/heads/main"); err != nil {
+	binding, err := BindProject(root, "orchestrator", "refs/heads/main")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if binding["schema_version"] != bindingSchemaVersion || binding["runbook_path"] != "runbooks/**" {
+		t.Fatalf("unexpected binding protocol: %#v", binding)
 	}
 	invite, err := CreateInvite(root, 30, true)
 	if err != nil {
@@ -291,8 +296,28 @@ func TestInviteRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payload["repository"] != "https://github.com/example/relay" || payload["ref"] != "refs/heads/main" {
+	if payload["v"] != float64(inviteVersion) || payload["repository"] != "https://github.com/example/relay" || payload["ref"] != "refs/heads/main" {
 		t.Fatalf("unexpected invite: %#v", payload)
+	}
+}
+
+func TestLegacyTaskInviteIsRejected(t *testing.T) {
+	payload := map[string]any{
+		"v":          1,
+		"repository": "https://github.com/example/relay",
+		"ref":        "refs/heads/main",
+		"task_path":  "tasks/**",
+		"mode":       "codex",
+		"nonce":      "legacy-invite-token",
+		"expires_at": time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := "code-relay://join/" + base64.RawURLEncoding.EncodeToString(raw)
+	if _, err := DecodeInvite(url); err == nil {
+		t.Fatal("expected v1 task invitation to be rejected")
 	}
 }
 
@@ -321,7 +346,7 @@ func TestOneTimeInviteAllowsOnlyOneConcurrentJoin(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			_, joinErr := JoinVerifier(root, invite["url"].(string))
+			_, joinErr := JoinCheckpoint(root, invite["url"].(string))
 			results <- joinErr
 		}()
 	}
@@ -340,16 +365,32 @@ func TestOneTimeInviteAllowsOnlyOneConcurrentJoin(t *testing.T) {
 
 func TestMCPToolsAndPublish(t *testing.T) {
 	root := t.TempDir()
-	markdown := testTask
-	result, err := PublishTask(root, markdown, false, true)
+	markdown := testRunbook
+	result, err := PublishRunbook(root, markdown, false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result["task_id"] != "go-test" {
+	if result["runbook_id"] != "go-test" {
 		t.Fatalf("unexpected publish result: %#v", result)
 	}
-	if len(mcpTools()) < 9 {
-		t.Fatalf("expected MCP tools, got %d", len(mcpTools()))
+	tools := mcpTools()
+	if len(tools) < 9 {
+		t.Fatalf("expected MCP tools, got %d", len(tools))
+	}
+	names := map[string]bool{}
+	for _, tool := range tools {
+		name, _ := tool["name"].(string)
+		names[name] = true
+	}
+	for _, name := range []string{"publish_runbook", "create_checkpoint_invite", "join_checkpoint"} {
+		if !names[name] {
+			t.Fatalf("missing renamed MCP tool %s", name)
+		}
+	}
+	for _, name := range []string{"publish_task", "create_verifier_invite", "join_verifier"} {
+		if names[name] {
+			t.Fatalf("legacy MCP tool remains exposed: %s", name)
+		}
 	}
 }
 
@@ -383,7 +424,7 @@ func TestMCPStdioRoundTrip(t *testing.T) {
 }
 
 func TestMCPRejectsInvalidRequestsAndContinues(t *testing.T) {
-	oversized := strings.Repeat("x", 2*maxTask+1)
+	oversized := strings.Repeat("x", 2*maxRunbook+1)
 	input := strings.NewReader("{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"ping\"}\n" +
 		"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{}}\n" +
 		oversized + "\n" +
@@ -453,7 +494,7 @@ func TestMCPNotificationHasNoResponse(t *testing.T) {
 }
 
 func TestDaemonHTTPBoundaryChecks(t *testing.T) {
-	d := &daemon{root: t.TempDir(), role: "verifier", requests: map[string][]time.Time{}}
+	d := &daemon{root: t.TempDir(), role: "checkpoint", requests: map[string][]time.Time{}}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	recorder := httptest.NewRecorder()
 	d.handle(recorder, request)
@@ -563,8 +604,8 @@ func TestSymlinkParentIsRejected(t *testing.T) {
 func TestPublishRunFetchAnalyzeAndReprocessInvalidReceipt(t *testing.T) {
 	root := initTestRepository(t)
 	commit := testGit(t, root, "rev-parse", "HEAD")
-	raw := strings.Replace(testTask, "abc1234", commit, 1)
-	if _, err := PublishTask(root, raw, false, true); err != nil {
+	raw := strings.Replace(testRunbook, "abc1234", commit, 1)
+	if _, err := PublishRunbook(root, raw, false, true); err != nil {
 		t.Fatal(err)
 	}
 	assertPendingPassed(t, root)
@@ -592,7 +633,7 @@ func TestPublishRunFetchAnalyzeAndReprocessInvalidReceipt(t *testing.T) {
 	}
 }
 
-func TestPublishTaskDoesNotCreateEmptyCommit(t *testing.T) {
+func TestPublishRunbookDoesNotCreateEmptyCommit(t *testing.T) {
 	root := initTestRepository(t)
 	remote := filepath.Join(t.TempDir(), "remote.git")
 	if out, err := exec.Command("git", "init", "--bare", remote).CombinedOutput(); err != nil {
@@ -601,17 +642,17 @@ func TestPublishTaskDoesNotCreateEmptyCommit(t *testing.T) {
 	testGit(t, root, "remote", "add", "origin", remote)
 	testGit(t, root, "push", "--set-upstream", "origin", "HEAD")
 	commit := testGit(t, root, "rev-parse", "HEAD")
-	raw := strings.Replace(testTask, "abc1234", commit, 1)
-	if _, err := PublishTask(root, raw, false, false); err != nil {
+	raw := strings.Replace(testRunbook, "abc1234", commit, 1)
+	if _, err := PublishRunbook(root, raw, false, false); err != nil {
 		t.Fatal(err)
 	}
 	first := testGit(t, root, "rev-parse", "HEAD")
-	if _, err := PublishTask(root, raw, false, false); err != nil {
+	if _, err := PublishRunbook(root, raw, false, false); err != nil {
 		t.Fatal(err)
 	}
 	second := testGit(t, root, "rev-parse", "HEAD")
 	if first != second {
-		t.Fatalf("identical task publication created a new commit: %s -> %s", first, second)
+		t.Fatalf("identical runbook publication created a new commit: %s -> %s", first, second)
 	}
 }
 
@@ -655,11 +696,11 @@ func TestRunPendingRecordsWorktreeFailure(t *testing.T) {
 	if out, err := exec.Command("git", "init", root).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v (%s)", err, out)
 	}
-	path := filepath.Join(root, "tasks", "missing-commit", "task.md")
+	path := filepath.Join(root, "runbooks", "missing-commit", "runbook.md")
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	raw := strings.ReplaceAll(testTask, "go-test", "missing-commit")
+	raw := strings.ReplaceAll(testRunbook, "go-test", "missing-commit")
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -679,11 +720,11 @@ func TestRunPendingRecordsWorktreeFailure(t *testing.T) {
 	}
 }
 
-func FuzzParseTask(f *testing.F) {
-	f.Add(testTask)
-	f.Add("# Task\n- task_id: x\n")
+func FuzzParseRunbook(f *testing.F) {
+	f.Add(testRunbook)
+	f.Add("# Runbook\n- runbook_id: x\n")
 	f.Fuzz(func(t *testing.T, raw string) {
-		_, _ = parseTask(raw)
+		_, _ = parseRunbook(raw)
 	})
 }
 

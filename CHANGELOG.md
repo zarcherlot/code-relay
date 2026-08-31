@@ -4,18 +4,38 @@ All notable changes to Code Relay are recorded here. The project is currently in
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-08-31
+
+### Breaking
+
+- Replaced the public `task` contract with `runbook`, including storage paths,
+  schemas, receipt bindings, MCP arguments, CLI commands, and workflow inputs.
+- Raised branch binding and invitation protocols to v2 so 3.0 rejects stale
+  `task`-based project state and join links.
+- Renamed the target-side `verify` Skill and binding role to `checkpoint`; the
+  only explicit Skill invocations are now `$code-relay:relay` and
+  `$code-relay:checkpoint`.
+- Removed the prior `task` and `verifier` names without compatibility aliases.
+
+### Documentation
+
+- Clarified the product artifact model: Relay sends a Runbook to a Checkpoint,
+  and the Checkpoint returns a Receipt.
+- Updated the overview illustration to label the outbound Runbook, target-side
+  Checkpoint, and returned Receipt separately.
+
 ### Reliability and release engineering
 
 - Added hosted MCP mode with OAuth 2.1/PKCE, encrypted stateless sessions,
   GitHub App installation authorization, repository/branch access checks, and
-  GitHub Contents/Actions task and receipt flow.
+  GitHub Contents/Actions runbook and receipt flow.
 - Added hosted MCP audit test matrix and JSON request audit logging with secret
   redaction boundaries.
 - Added contract validation for schemas, fixtures, plugin metadata, and MCP configuration.
 - Added cross-platform local end-to-end smoke coverage for passed and failed verification paths.
 - Added release artifact manifest/checksum verification and a repeatable release/rollback checklist.
 - Tightened Git child-process environment isolation, managed-directory permissions, daemon listener policy, and worktree pruning.
-- Added verifier operations runbook and CODEOWNERS governance.
+- Added checkpoint operations runbook and CODEOWNERS governance.
 
 ## [2.0.0] - 2026-08-30
 
@@ -48,10 +68,10 @@ All notable changes to Code Relay are recorded here. The project is currently in
 
 ### Security
 
-- Added strict task/receipt size, field, task ID, and commit SHA validation.
+- Added strict runbook/receipt size, field, runbook ID, and commit SHA validation.
 - Validation commands now run without a shell, with executable allowlisting, bounded output, timeout process-tree termination, secret environment scrubbing, and worktree scope checks.
 - Added optional HMAC integrity for invitations through `CODE_RELAY_INVITE_SECRET`.
-- Added atomic state/receipt writes, private config file permissions where supported, watcher binding checks, webhook body limits, and safer remote task path handling.
+- Added atomic state/receipt writes, private config file permissions where supported, watcher binding checks, webhook body limits, and safer remote runbook path handling.
 - Hardened the GitHub Actions workflow with non-persistent checkout credentials and deterministic worktree cleanup.
 
 ### Removed
@@ -63,11 +83,11 @@ All notable changes to Code Relay are recorded here. The project is currently in
 ### Added
 
 - Formal Codex plugin manifest under `.codex-plugin/plugin.json`.
-- Orchestrator and verifier Skills with plugin-local MCP tools.
+- Orchestrator and checkpoint Skills with plugin-local MCP tools.
 - Branch-scoped project binding using canonical repository and remote ref.
-- Short-lived verifier invitation links.
+- Short-lived checkpoint invitation links.
 - B-side empty-workspace clone, project association, and watcher bootstrap.
-- Private task inbox, remote-ref polling, deduplication, receipt validation, and self-hosted runner workflow.
+- Private runbook inbox, remote-ref polling, deduplication, receipt validation, and self-hosted runner workflow.
 - End-to-end tests for binding, invitations, cloning, watcher lifecycle, and safe execution.
 
 ### Changed
@@ -78,4 +98,4 @@ All notable changes to Code Relay are recorded here. The project is currently in
 ### Known limitations
 
 - Invitations are bearer links and are not yet signed or revocable.
-- Automatic verifier-agent startup is exposed through a host adapter hook; the bundled watcher itself does not assume a particular Codex CLI integration.
+- Automatic checkpoint-agent startup is exposed through a host adapter hook; the bundled watcher itself does not assume a particular Codex CLI integration.

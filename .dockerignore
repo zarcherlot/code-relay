@@ -5,7 +5,7 @@ dist
 bin
 assets
 examples
-tasks
+runbooks
 receipts
 *.md
 !go.mod

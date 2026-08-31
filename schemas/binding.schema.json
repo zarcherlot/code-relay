@@ -5,13 +5,13 @@
   "type": "object",
   "required": ["schema_version", "repository", "ref"],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "repository": {"type": "string", "minLength": 1, "maxLength": 2048},
     "ref": {"type": "string", "pattern": "^refs/heads/[A-Za-z0-9._/-]+$"},
-    "task_path": {"const": "tasks/**"},
-    "role": {"enum": ["orchestrator", "verifier"]},
+    "runbook_path": {"const": "runbooks/**"},
+    "role": {"enum": ["orchestrator", "checkpoint"]},
     "runtime": {"enum": ["go"]},
-    "verifier_id": {"type": "string", "maxLength": 128},
+    "checkpoint_id": {"type": "string", "maxLength": 128},
     "created_at": {"type": "string", "maxLength": 128},
     "joined_at": {"type": "string", "maxLength": 128}
   },

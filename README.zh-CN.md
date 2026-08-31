@@ -22,15 +22,15 @@ Relay 是面向 Codex 的跨机器开发验证协作工具。开发机上的 AI 
 ## 产品逻辑
 
 ```text
-在 Codex 中描述任务
+在 Codex 中描述需求
         ↓
-开发机 → Relay task → 目标机
+开发机 → Relay runbook → 目标机
         ↓                 ↓
-      开发          在真实环境中验证
+      开发          在真实环境设卡验证
         ←────── Receipt / 证据 ──────
 ```
 
-Relay 将每个任务绑定到仓库、分支和 source commit，确保目标机验证的是准备交付的准确版本。通过、失败和阻塞结果都会保留在 Git 中，便于审计和恢复。
+Relay 将每份 runbook 绑定到仓库、分支和 source commit。目标机作为 Checkpoint 验证准备交付的准确版本，并返回可审计的 Receipt；通过、失败和阻塞结果都会保留在 Git 中。
 
 ## 什么时候需要 Relay
 
@@ -50,7 +50,7 @@ Relay 将每个任务绑定到仓库、分支和 source commit，确保目标机
    当前仓库和分支并自动完成绑定。
 
 3. 在目标机安装同一个插件，把加入链接粘贴到 Codex 中。
-4. 目标机加入获准的仓库和分支，通过带 `codex-b` 标签的 GitHub Actions runner 执行任务并发布回执。
+4. 目标机作为 Checkpoint 加入获准的仓库和分支，通过带 `codex-b` 标签的 GitHub Actions runner 执行 runbook 并发布 Receipt。
 
 打包后的插件不需要用户安装 Python、Go 或单独的 Relay runtime。完整流程和故障恢复见 [USER_GUIDE.md](USER_GUIDE.md)。
 
@@ -81,7 +81,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
 
 - 分支级项目绑定和短时加入链接。
 - 在隔离 worktree 中验证精确的 source commit。
-- 通过 `codex-b` self-hosted runner 接入 GitHub Actions。
+- 通过 `codex-b` self-hosted runner 建立 Checkpoint。
 - 验证命令白名单、输出大小和超时控制。
 - 结构化 `receipt.json` 与人类可读回执，覆盖通过、失败和阻塞状态。
 

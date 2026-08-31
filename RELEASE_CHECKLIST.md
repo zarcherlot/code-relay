@@ -26,8 +26,8 @@ runtime feature or compatibility layer.
 
 ## Rollback
 
-- Pause the verifier workflow or disable the affected runner label.
+- Pause the checkpoint workflow or disable the affected runner label.
 - Restore the previous known-good binary and keep the project binding intact.
-- Do not delete tasks or receipts; re-run only after the source commit and
+- Do not delete runbooks or receipts; re-run only after the source commit and
   receipt state have been reviewed.
 - Record the failed release tag, workflow run, and recovery commit.

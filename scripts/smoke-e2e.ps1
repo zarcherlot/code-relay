@@ -35,7 +35,7 @@ try {
     $env:CGO_ENABLED = "0"
     $env:GOOS = $goos
     $env:GOARCH = $goarch
-    go build -trimpath -ldflags "-s -w -X main.version=2.0.0" -o $binary ./cmd/code-relay-agent
+    go build -trimpath -ldflags "-s -w -X main.version=3.0.0" -o $binary ./cmd/code-relay-agent
   } finally {
     Pop-Location
   }
@@ -47,9 +47,9 @@ try {
   Invoke-Git @("add", "README.md") $repo | Out-Null
   Invoke-Git @("commit", "-m", "e2e fixture") $repo | Out-Null
   $commit = Invoke-Git @("rev-parse", "HEAD") $repo
-  $task = @"
-# Task
-- task_id: e2e-smoke
+  $runbook = @"
+# Runbook
+- runbook_id: e2e-smoke
 - source_commit: $commit
 - target: B
 - objective: verify the local Code Relay end-to-end path
@@ -63,19 +63,19 @@ try {
 ## Receipt Contract
 - status and command output are recorded
 "@
-  $taskFile = Join-Path $work "task.md"
-  Set-Content -LiteralPath $taskFile -Value $task -Encoding utf8
-  Invoke-Agent @("publish", "--root", $repo, "--file", $taskFile, "--no-git") | Out-Null
+  $runbookFile = Join-Path $work "runbook.md"
+  Set-Content -LiteralPath $runbookFile -Value $runbook -Encoding utf8
+  Invoke-Agent @("publish", "--root", $repo, "--file", $runbookFile, "--no-git") | Out-Null
   $pending = Invoke-Agent @("run-pending", "--root", $repo, "--timeout", "30") | ConvertFrom-Json
   if ($pending.Count -ne 1 -or $pending[0].status -ne "passed") { throw "run-pending did not pass: $pending" }
   $receipt = Invoke-Agent @("fetch-receipt", "e2e-smoke", "--root", $repo) | ConvertFrom-Json
-  if ($receipt.status -ne "passed" -or $receipt.task_id -ne "e2e-smoke") { throw "receipt validation failed" }
+  if ($receipt.status -ne "passed" -or $receipt.runbook_id -ne "e2e-smoke") { throw "receipt validation failed" }
   $analysis = Invoke-Agent @("analyze", "e2e-smoke", "--root", $repo) | ConvertFrom-Json
   if ($analysis.conclusion -ne "done") { throw "analysis did not conclude done" }
 
-  $failureTask = $task.Replace("e2e-smoke", "e2e-failure").Replace("go version", "go version definitely-not-a-file")
-  $failureFile = Join-Path $work "failure-task.md"
-  Set-Content -LiteralPath $failureFile -Value $failureTask -Encoding utf8
+  $failureRunbook = $runbook.Replace("e2e-smoke", "e2e-failure").Replace("go version", "go version definitely-not-a-file")
+  $failureFile = Join-Path $work "failure-runbook.md"
+  Set-Content -LiteralPath $failureFile -Value $failureRunbook -Encoding utf8
   Invoke-Agent @("publish", "--root", $repo, "--file", $failureFile, "--no-git") | Out-Null
   $failedPending = Invoke-Agent @("run-pending", "--root", $repo, "--timeout", "30") | ConvertFrom-Json
   if ($failedPending.Count -ne 1 -or $failedPending[0].status -ne "failed") { throw "failure path did not produce failed receipt" }

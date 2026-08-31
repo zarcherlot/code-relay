@@ -85,7 +85,7 @@ func gitEnvironment() []string {
 	}
 	env := filteredEnvironment(blocked)
 	// Git must never wait for an interactive credential prompt in Actions or
-	// a verifier service.  Explicit credentials configured by the caller still
+	// a checkpoint service.  Explicit credentials configured by the caller still
 	// work through the normal Git credential helper or SSH agent.
 	env = append(env, "GIT_TERMINAL_PROMPT=0")
 	return env

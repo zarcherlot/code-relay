@@ -2,7 +2,7 @@
 
 ## Decision
 
-Keep the existing Go agent and GitHub Actions verifier as the execution/data
+Keep the existing Go agent and GitHub Actions checkpoint as the execution/data
 plane. Add a small, separately deployed Go MCP gateway as the public control
 plane. The gateway exposes the reviewed MCP tools over Streamable HTTP at
 `/mcp`; it must never expose a user's local project directory or bind the
@@ -14,14 +14,14 @@ existing localhost daemon directly to the Internet.
 ChatGPT plugin
   -> HTTPS /mcp + OAuth 2.1
   -> Code Relay MCP gateway
-  -> GitHub API (task commit / workflow dispatch / receipt read)
+  -> GitHub API (runbook commit / workflow dispatch / receipt read)
   -> dedicated codex-b self-hosted runner
   -> existing code-relay-agent run-pending
-  -> receipts/<task-id> pushed to the bound branch
+  -> receipts/<runbook-id> pushed to the bound branch
 ```
 
-The gateway is stateless for task execution. GitHub remains the source of
-truth for repositories, task commits, workflow runs, and receipts. A small
+The gateway is stateless for runbook execution. GitHub remains the source of
+truth for repositories, runbook commits, workflow runs, and receipts. A small
 database is only needed for OAuth state, installation-to-repository bindings,
 rate limits, and audit references.
 
@@ -30,7 +30,7 @@ rate limits, and audit references.
 The hosted path is now implemented in the Go gateway. When the GitHub OAuth,
 GitHub App, and session-secret variables are present, `cmd/code-relay-mcp`
 starts in hosted mode; otherwise it keeps the local Bearer-token staging mode.
-Hosted task and receipt operations use the GitHub Contents and Actions APIs and
+Hosted runbook and receipt operations use the GitHub Contents and Actions APIs and
 never read or write `CODE_RELAY_MCP_ROOT`.
 
 Authentication endpoints are `/auth/github` (OAuth start),
@@ -50,7 +50,7 @@ installation ID is never a user-facing input.
 OAuth state and sessions are encrypted, short-lived cookies, so the gateway
 does not require a local database or persistent container volume for identity
 state. GitHub remains the source of truth for repository authorization,
-branches, task commits, workflow dispatches, and receipts. Rate-limit counters
+branches, runbook commits, workflow dispatches, and receipts. Rate-limit counters
 and audit events are process-local today; deploy one gateway instance or put a
 shared edge rate limiter in front of a multi-instance deployment.
 Set `CODE_RELAY_ALLOWED_REFS` when the hosted deployment should limit users to
@@ -69,7 +69,7 @@ an explicit branch allowlist (for example `owner/repo@refs/heads/main`).
    encrypts the session cookie, verifies the user's installation membership,
    and mints a short-lived installation token for each API operation.
 4. Grant the GitHub App only Contents (read/write) and Actions (read/write)
-   permissions needed for task commits, workflow dispatch, and receipt reads.
+   permissions needed for runbook commits, workflow dispatch, and receipt reads.
    Keep the existing `codex-b` runner isolated and protected by
    repository/branch policy.
 5. Add request size, concurrency, timeout, and per-user rate limits at the
@@ -92,7 +92,7 @@ docker run --rm -p 8080:8080 \
   code-relay-mcp
 ```
 
-The checkout should be writable for tools such as `publish_task`; use a
+The checkout should be writable for tools such as `publish_runbook`; use a
 dedicated staging checkout and least-privilege credentials rather than the
 read-only mount shown above when testing write workflows.
 
@@ -107,9 +107,9 @@ that exact token at `/.well-known/openai-apps-challenge`.
 The public gateway should initially expose only the existing safe workflow:
 
 - bind/status/doctor for an authorized repository;
-- publish a task through the existing task schema;
+- publish a runbook through the existing runbook schema;
 - fetch/analyze a receipt;
-- validate task content before dispatch.
+- validate runbook content before dispatch.
 
 It should not expose arbitrary shell execution, local filesystem paths, runner
 registration, invitation secrets, or service-management commands. Those remain

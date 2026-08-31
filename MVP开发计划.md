@@ -11,7 +11,7 @@ Codex Plugin
     ↓ MCP stdio
 code-relay-agent (Go)
     ├─ binding / invite / join
-    ├─ task / receipt protocol
+    ├─ runbook / receipt protocol
     ├─ publish / status / analyze
     └─ bounded runner
              ↓ GitHub Actions
@@ -20,9 +20,9 @@ code-relay-agent (Go)
 
 ## 阶段 1：Go 协议和 MCP
 
-- 保留 `tasks/`、`receipts/`、`.code-relay/` 和现有 Schema。
-- 实现 `mcp-stdio`、`bind_project`、`create_verifier_invite`、`join_verifier`。
-- 统一 task/receipt 解析、SHA-256 绑定、原子写入和安全策略。
+- 保留 `runbooks/`、`receipts/`、`.code-relay/` 和现有 Schema。
+- 实现 `mcp-stdio`、`bind_project`、`create_checkpoint_invite`、`join_checkpoint`。
+- 统一 runbook/receipt 解析、SHA-256 绑定、原子写入和安全策略。
 
 验收：Go 能读取已有 fixture，MCP 通过 initialize、tools/list、tools/call 契约测试。
 
@@ -30,19 +30,19 @@ code-relay-agent (Go)
 
 - 实现 `publish`、`fetch-receipt`、`analyze`。
 - 实现 `run-pending` 和 `publish-receipts`。
-- 每个任务使用 source commit 隔离 worktree、任务锁和幂等检查。
+- 每份 runbook 使用 source commit 隔离 worktree、runbook 锁和幂等检查。
 - 验证命令使用 argv，不使用 shell；限制超时、输出和敏感环境变量。
 
-验收：成功、失败、超时、阻塞和重复任务均生成可审计回执。
+验收：成功、失败、超时、阻塞和重复 runbook 均生成可审计 Receipt。
 
 ## 阶段 3：GitHub Actions 集成
 
 - B 主机使用带 `codex-b` 标签的 self-hosted runner。
-- workflow 由 Go `run-pending` 执行任务，不包含 Python 脚本。
+- workflow 由 Go `run-pending` 执行 runbook，不包含 Python 脚本。
 - 使用 `GITHUB_TOKEN` 的最小权限提交回执。
 - 生产环境优先使用一次性或可清理 runner；固定硬件主机必须限制并发并清理 worktree。
 
-验收：push task 后 workflow 自动运行，receipt 可被 A 端读取和分析。
+验收：push runbook 后 workflow 自动运行，Receipt 可被 A 端读取和分析。
 
 ## 阶段 4：发布和供应链
 
@@ -73,10 +73,10 @@ code-relay-agent (Go)
 
 ## 完成标准
 
-从 A Codex 输入任务开始，可以完成：
+从 A Codex 输入需求开始，可以完成：
 
 ```text
-开发 → 合入 → publish task → GitHub Actions 调度 B
+开发 → 合入 → publish runbook → GitHub Actions 调度 Checkpoint
 → Go agent 隔离验证 → publish receipt → A analyze
 ```
 

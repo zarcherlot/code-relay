@@ -1,0 +1,4 @@
+interface:
+  display_name: "Checkpoint"
+  short_description: "Join a Relay branch and checkpoint incoming runbooks."
+  default_prompt: "Show checkpoint status for the current Code Relay binding."

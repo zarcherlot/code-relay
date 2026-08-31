@@ -20,15 +20,15 @@ Relay is a Codex plugin for cross-machine development and verification. AI on th
 ## How it works
 
 ```text
-Describe a task in Codex
+Describe the change in Codex
         ↓
-Dev Host → Relay task → Target Host
+Dev Host → Relay runbook → Target Host
         ↓                 ↓
-     develop          verify in the real environment
+     develop          checkpoint in the real environment
         ←────── Receipt / evidence ──────
 ```
 
-Relay binds every task to a repository, branch, and source commit, so the Target Host verifies the code you actually intended to ship. Pass, fail, and blocked results remain auditable in Git.
+Relay binds every runbook to a repository, branch, and source commit. The Target Host acts as the checkpoint, verifies the exact code you intended to ship, and returns an auditable receipt for passed, failed, or blocked results.
 
 ## When Relay is useful
 
@@ -45,7 +45,7 @@ Relay binds every task to a repository, branch, and source commit, so the Target
    > Enable Code Relay for the current project and branch, then generate a Target Host join link.
 
 3. On the Target Host, install the same plugin and paste the link into Codex.
-4. The Target Host joins the approved repository and branch, runs tasks on its `codex-b` GitHub Actions runner, and publishes a receipt.
+4. The Target Host joins the approved repository and branch as its checkpoint, executes runbooks on the `codex-b` GitHub Actions runner, and publishes a receipt.
 
 Users do not need to install Python, Go, or a separate Relay runtime for the packaged plugin. See [USER_GUIDE.md](USER_GUIDE.md) for the complete journey and recovery steps.
 
@@ -76,7 +76,7 @@ for cloning the repository and installing Git, PowerShell 7, and Go 1.26+ first.
 
 - Branch-scoped project binding and short-lived join links.
 - Exact source-commit verification in an isolated worktree.
-- GitHub Actions integration with a `codex-b` self-hosted runner.
+- Checkpoint execution through a `codex-b` GitHub Actions self-hosted runner.
 - Safe, allowlisted validation commands with bounded output and timeouts.
 - Structured `receipt.json` plus a human-readable receipt for pass, fail, and blocked runs.
 

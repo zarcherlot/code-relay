@@ -88,12 +88,12 @@ func defaultRemoteMCPTools() map[string]bool {
 }
 
 var remoteToolNames = map[string]struct{}{
-	"bind_project":  {},
-	"doctor":        {},
-	"publish_task":  {},
-	"status":        {},
-	"fetch_receipt": {},
-	"analyze":       {},
+	"bind_project":    {},
+	"doctor":          {},
+	"publish_runbook": {},
+	"status":          {},
+	"fetch_receipt":   {},
+	"analyze":         {},
 }
 
 type mcpHTTPHandler struct {

@@ -13,9 +13,9 @@ import (
 
 var remoteCredential = regexp.MustCompile(`(?i)((?:https?|ssh|git)://)[^/@\s]+@`)
 
-func validateTaskID(value string) error {
-	if !taskID.MatchString(value) {
-		return fmt.Errorf("非法 task_id: %s", value)
+func validateRunbookID(value string) error {
+	if !runbookID.MatchString(value) {
+		return fmt.Errorf("非法 runbook_id: %s", value)
 	}
 	return nil
 }
@@ -26,7 +26,7 @@ func ensurePrivateDir(path string) error {
 	}
 	// MkdirAll preserves permissions on an existing directory.  Tighten the
 	// mode on every managed directory so a previously permissive checkout does
-	// not silently expose bindings, tasks, receipts, or locks.
+	// not silently expose bindings, runbooks, receipts, or locks.
 	if err := os.Chmod(path, 0700); err != nil && !errors.Is(err, os.ErrPermission) {
 		return err
 	}

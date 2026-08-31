@@ -1,26 +1,31 @@
-name: Code Relay - verify on B
+name: Code Relay - checkpoint
 
 on:
   push:
     tags-ignore:
       - "v*.*.*"
     paths:
-      - "tasks/**"
+      - "runbooks/**"
   workflow_dispatch:
+    inputs:
+      runbook_id:
+        description: Optional runbook identifier supplied by the Relay gateway
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: code-relay-verifier
+  group: code-relay-checkpoint
   cancel-in-progress: false
 
 jobs:
-  verify:
+  checkpoint:
     runs-on: [self-hosted, codex-b]
     timeout-minutes: 30
     steps:
-      - name: Checkout task commit
+      - name: Checkout runbook commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
@@ -47,7 +52,7 @@ jobs:
           CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "-s -w" -o "dist/$name" ./cmd/code-relay-agent
           chmod +x "dist/$name"
           echo "CODE_RELAY_AGENT=$PWD/dist/$name" >> "$GITHUB_ENV"
-      - name: Find and verify new tasks
+      - name: Execute pending runbooks
         shell: bash
         run: |
           set -euo pipefail

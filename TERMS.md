@@ -6,7 +6,7 @@ Code Relay is provided as open-source software under the MIT License. You may
 use, copy, modify, and distribute it subject to the terms in [LICENSE](LICENSE).
 
 You are responsible for the repositories, credentials, runners, commands, and
-data that you connect to Code Relay. Review task content and runner
+data that you connect to Code Relay. Review runbook content and runner
 permissions before execution. Do not use the project to bypass access
 controls, execute unauthorized commands, or process data that you are not
 authorized to handle.

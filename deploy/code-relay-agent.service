@@ -1,5 +1,5 @@
 [Unit]
-Description=Code Relay verifier agent
+Description=Code Relay checkpoint agent
 After=network-online.target
 Wants=network-online.target
 
@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=code-relay
 WorkingDirectory=/var/lib/code-relay/project
-ExecStart=/usr/local/bin/code-relay-agent daemon --root /var/lib/code-relay/project --role verifier --poll-interval 5
+ExecStart=/usr/local/bin/code-relay-agent daemon --root /var/lib/code-relay/project --role checkpoint --poll-interval 5
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

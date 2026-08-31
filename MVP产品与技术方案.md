@@ -2,7 +2,7 @@
 
 ## 1. 一句话定义
 
-Code Relay 是一个以 Codex 对话为唯一工作界面的双机协作插件：A 主机负责开发和编排，B 主机负责目标环境验证；GitHub 负责代码、任务、状态和回执的中转。
+Code Relay 是一个以 Codex 对话为唯一工作界面的双机协作插件：A 主机负责开发和编排，B 主机作为 Checkpoint 负责目标环境验证；GitHub 负责代码、Runbook、状态和 Receipt 的中转。
 
 ## 2. MVP 用户体验
 
@@ -15,14 +15,14 @@ A Codex 自动完成：
 1. 修改代码并执行本地验证。
 2. 提交分支、推送并创建 PR。
 3. 等待远端 CI，通过后合入主分支。
-4. 根据合入版本生成 `tasks/task-xxx/task.md`，写入 B 的验证计划和预期结果。
+4. 根据合入版本生成 `runbooks/runbook-xxx/runbook.md`，写入 Checkpoint 的验证计划和预期结果。
 5. 监听 B 的回执。
 6. 拉取并分析回执；失败时开始下一轮开发，成功时向用户报告完成。
 
 B Codex 自动完成：
 
-1. 监听 GitHub 中新增的任务。
-2. 拉取任务指定的代码版本和 `task.md`。
+1. 监听 GitHub 中新增的 Runbook。
+2. 拉取 Runbook 指定的代码版本和 `runbook.md`。
 3. 按验证计划执行测试或业务验证。
 4. 对比实际结果和预期结果。
 5. 生成回执并推送到 GitHub。
@@ -34,7 +34,7 @@ B Codex 自动完成：
 ● B 正在执行目标机验证
 ✗ 验证失败：重复回调产生两条记录
 ● A 已根据回执启动第二轮修复
-✓ B 验证通过，任务完成
+✓ Checkpoint 验证通过，Runbook 完成
 ```
 
 ## 3. 产品形态
@@ -44,9 +44,9 @@ MVP 不做独立 Web 控制台，形态只有一个 Codex Plugin（Go CLI/MCP �
 ```text
 Code Relay Plugin
 ├── orchestrator Skill      # A 的绑定、发布、监听、分析规则
-├── verifier Skill          # B 的加入、验证、回执规则
+├── checkpoint Skill        # B 的加入、验证、Receipt 规则
 ├── MCP tools                # bind / invite / join / publish / analyze
-└── Go runtime               # Git-backed task/receipt、隔离执行器
+└── Go runtime               # Git-backed runbook/receipt、隔离执行器
 ```
 
 A、B 安装同一个插件，通过当前动作和项目配置区分角色；不要求用户安装语言运行时或执行 relay install：
@@ -56,7 +56,7 @@ A、B 安装同一个插件，通过当前动作和项目配置区分角色；�
 role: orchestrator
 
 # B 主机
-role: verifier
+role: checkpoint
 ```
 
 ## 4. 最小架构
@@ -67,16 +67,16 @@ role: verifier
  A Codex + Code Relay Plugin
   ├─ 本地开发/测试
   ├─ PR、CI、合入
-  ├─ 生成 task.md
+  ├─ 生成 runbook.md
   └─ 监听 receipts/
           ↓ GitHub
       代码仓库
-      ├── tasks/task-xxx/task.md
-      ├── receipts/task-xxx/receipt.json
-      └── receipts/task-xxx/receipt.md
+      ├── runbooks/runbook-xxx/runbook.md
+      ├── receipts/runbook-xxx/receipt.json
+      └── receipts/runbook-xxx/receipt.md
           ↓ GitHub push / Actions
  B Code Relay Plugin + GitHub Actions runner + Go agent
-  ├─ 发现任务
+  ├─ 发现 Runbook
   ├─ 执行验证
   └─ 推送回执
 ```
@@ -90,23 +90,23 @@ MVP 使用 GitHub Actions self-hosted runner 触发 B，B 不需要公网入站 
 ## 5. GitHub 数据约定
 
 ```text
-tasks/
-└── task-001/
-    └── task.md
+runbooks/
+└── runbook-001/
+    └── runbook.md
 receipts/
-└── task-001/
+└── runbook-001/
     ├── receipt.json
     ├── receipt.md
     └── logs/                # 可选
 ```
 
-每个任务都有唯一 `task_id`，并绑定合入后的 `source_commit`，避免 B 验证错误版本。
+每份 Runbook 都有唯一 `runbook_id`，并绑定合入后的 `source_commit`，避免 Checkpoint 验证错误版本。
 
-### task.md 必填内容
+### runbook.md 必填内容
 
 ```markdown
-# Task
-- task_id: task-001
+# Runbook
+- runbook_id: runbook-001
 - source_commit: abc1234
 - target: B
 - objective: ...
@@ -129,7 +129,7 @@ receipts/
 
 ```json
 {
-  "task_id": "task-001",
+  "runbook_id": "runbook-001",
   "source_commit": "abc1234",
   "status": "passed",
   "checks": [
@@ -151,22 +151,22 @@ receipts/
 
 ```text
 developing → pr_open → ci_running → merged
-    → task_published → verifying → receipt_published
+    → runbook_published → verifying → receipt_published
     → analyzing → done
                          ├─ failed → developing（下一轮）
                          └─ blocked → 用户决策
 ```
 
-状态来源保持简单：PR/check 状态、任务文件、回执文件和 commit SHA，不引入独立数据库。
+状态来源保持简单：PR/check 状态、Runbook 文件、Receipt 文件和 commit SHA，不引入独立数据库。
 
 ## 7. MVP 范围
 
 必须有：
 
-- A Codex 的自然语言触发和任务编排 Skill。
+- A Codex 的自然语言触发和 Runbook 编排 Skill。
 - B Codex 的验证 Skill。
-- GitHub 任务和回执目录约定。
-- A 开发、PR、CI、合入后的 task 发布。
+- GitHub Runbook 和 Receipt 目录约定。
+- A 开发、PR、CI、合入后的 Runbook 发布。
 - B self-hosted runner 执行验证。
 - `receipt.json` + `receipt.md` 回传。
 - A 监听/拉取回执并自动分析。
@@ -183,12 +183,12 @@ developing → pr_open → ci_running → merged
 
 ## 8. 成功标准
 
-从 A 的 Codex 输入一句任务指令开始，能够完成以下闭环：
+从 A 的 Codex 输入一句需求指令开始，能够完成以下闭环：
 
 ```text
-本地开发 → PR → CI → 合入 → 发布 task.md
+本地开发 → PR → CI → 合入 → 发布 runbook.md
 → B 自动验证 → 推送 receipt
 → A 自动分析 → 完成或发起下一轮
 ```
 
-单个任务不需要用户手工编辑 Markdown、打开 GitHub 页面或登录 B 主机。
+单份 Runbook 不需要用户手工编辑 Markdown、打开 GitHub 页面或登录 Checkpoint 主机。

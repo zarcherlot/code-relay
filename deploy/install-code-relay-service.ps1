@@ -6,13 +6,13 @@ param(
 $ErrorActionPreference = "Stop"
 $resolvedBinary = (Resolve-Path -LiteralPath $Binary).Path
 $resolvedRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
-$quoted = '"' + $resolvedBinary + '" daemon --root "' + $resolvedRoot + '" --role verifier --poll-interval 5'
+$quoted = '"' + $resolvedBinary + '" daemon --root "' + $resolvedRoot + '" --role checkpoint --poll-interval 5'
 if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
   Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
   sc.exe delete $ServiceName | Out-Null
   Start-Sleep -Seconds 1
 }
-New-Service -Name $ServiceName -DisplayName "Code Relay Agent" -Description "Code Relay verifier daemon" -BinaryPathName $quoted -StartupType Automatic
+New-Service -Name $ServiceName -DisplayName "Code Relay Agent" -Description "Code Relay checkpoint daemon" -BinaryPathName $quoted -StartupType Automatic
 sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/30000/""/0 | Out-Null
 Start-Service -Name $ServiceName
 Write-Output "Installed and started $ServiceName"

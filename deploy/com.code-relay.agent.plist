@@ -11,7 +11,7 @@
     <string>--root</string>
     <string>REPLACE_WITH_PROJECT_ROOT</string>
     <string>--role</string>
-    <string>verifier</string>
+    <string>checkpoint</string>
     <string>--poll-interval</string>
     <string>5</string>
   </array>

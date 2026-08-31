@@ -105,7 +105,7 @@ Plugin package: <repository>\dist\plugin
 在新聊天中发送一个只读请求，例如：
 
 ```text
-Show Code Relay verifier status and the latest receipts.
+Show Code Relay checkpoint status and the latest receipts.
 ```
 
 验收标准：

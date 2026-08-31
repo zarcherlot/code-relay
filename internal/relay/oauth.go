@@ -222,7 +222,7 @@ func (s *OAuthService) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	session := OAuthSession{Subject: strconv.FormatInt(user.ID, 10), Login: user.Login, AccessToken: token, Repository: state.Repository, Ref: state.Ref, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(8 * time.Hour).Unix()}
 	if session.Repository != "" {
-		installationID, findErr := NewGitHubAppVerifier(s.config.GitHubAPIURL).FindUserInstallationForRepository(r.Context(), token, s.config.AppSlug, session.Repository)
+		installationID, findErr := NewGitHubAppMembershipClient(s.config.GitHubAPIURL).FindUserInstallationForRepository(r.Context(), token, s.config.AppSlug, session.Repository)
 		if findErr == nil {
 			session.InstallationID = installationID
 		} else if !errors.Is(findErr, errInstallationNotFound) {
@@ -294,7 +294,7 @@ func (s *OAuthService) appCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "repository binding is required", http.StatusBadRequest)
 		return
 	}
-	appClient := NewGitHubAppVerifier(s.config.GitHubAPIURL)
+	appClient := NewGitHubAppMembershipClient(s.config.GitHubAPIURL)
 	resolvedID, err := appClient.FindUserInstallationForRepository(r.Context(), session.AccessToken, s.config.AppSlug, session.Repository)
 	if err != nil || resolvedID != installationID {
 		http.Error(w, "installation is not available to this user", http.StatusForbidden)

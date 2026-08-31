@@ -23,8 +23,8 @@ import (
 // default scheduler; keeping this implementation isolated makes its security
 // boundary and lifecycle easier to audit without touching core orchestration.
 func Daemon(root, role string, interval float64, addr string) error {
-	if role != "orchestrator" && role != "verifier" {
-		return errors.New("role must be orchestrator or verifier")
+	if role != "orchestrator" && role != "checkpoint" {
+		return errors.New("role must be orchestrator or checkpoint")
 	}
 	if interval < 1 || interval > 3600 {
 		return errors.New("poll interval must be 1..3600")
@@ -39,14 +39,14 @@ func Daemon(root, role string, interval float64, addr string) error {
 	}
 	d := &daemon{root: root, role: role, requests: map[string][]time.Time{}}
 	stopWatcher := make(chan struct{})
-	if role == "verifier" {
+	if role == "checkpoint" {
 		go func() {
 			for {
 				select {
 				case <-stopWatcher:
 					return
 				default:
-					if err := syncTasks(root); err != nil {
+					if err := syncRunbooks(root); err != nil {
 						fmt.Fprintln(os.Stderr, err)
 					}
 					time.Sleep(time.Duration(interval * float64(time.Second)))

@@ -10,7 +10,7 @@ import (
 
 // RemoteMCPBackend is the data-plane boundary used by the hosted gateway.
 // Implementations must use remote APIs only; no local checkout or container
-// filesystem is involved in task or receipt operations.
+// filesystem is involved in runbook or receipt operations.
 type RemoteMCPBackend interface {
 	Call(context.Context, OAuthSession, string, map[string]any) (any, error)
 }
@@ -29,7 +29,7 @@ func NewGitHubRemoteBackend(app *GitHubAppClient, workflow string) (*GitHubRemot
 		return nil, errors.New("GitHub App client is required")
 	}
 	if strings.TrimSpace(workflow) == "" {
-		workflow = "verify-on-b.yml"
+		workflow = "checkpoint.yml"
 	}
 	return &GitHubRemoteBackend{App: app, Workflow: workflow, AllowedRefs: map[string]bool{}}, nil
 }
@@ -54,36 +54,36 @@ func (b *GitHubRemoteBackend) Call(ctx context.Context, session OAuthSession, na
 	switch name {
 	case "bind_project":
 		role := stringArg(args, "role")
-		if role != "orchestrator" && role != "verifier" {
-			return nil, errors.New("role 必须是 orchestrator 或 verifier")
+		if role != "orchestrator" && role != "checkpoint" {
+			return nil, errors.New("role 必须是 orchestrator 或 checkpoint")
 		}
 		if err := repo.GetRef(ctx, repository, ref); err != nil {
 			return nil, fmt.Errorf("绑定分支不可访问: %w", err)
 		}
-		return map[string]any{"schema_version": 1, "repository": repository, "ref": ref, "task_path": "tasks/**", "role": role, "subject": session.Subject, "login": session.Login, "installation_id": session.InstallationID, "created_at": now()}, nil
+		return map[string]any{"schema_version": bindingSchemaVersion, "repository": repository, "ref": ref, "runbook_path": "runbooks/**", "role": role, "subject": session.Subject, "login": session.Login, "installation_id": session.InstallationID, "created_at": now()}, nil
 	case "doctor":
 		if err := repo.GetRef(ctx, repository, ref); err != nil {
 			return nil, err
 		}
 		return map[string]any{"status": "ok", "repository": repository, "ref": ref, "github_app": true, "user": session.Login, "checked_at": now()}, nil
-	case "publish_task":
+	case "publish_runbook":
 		markdown, ok := args["markdown"].(string)
 		if !ok || strings.TrimSpace(markdown) == "" {
 			return nil, errors.New("markdown is required")
 		}
-		task, err := parseTask(markdown)
+		runbook, err := parseRunbook(markdown)
 		if err != nil {
 			return nil, err
 		}
-		path := "tasks/" + task.ID + "/task.md"
+		path := "runbooks/" + runbook.ID + "/runbook.md"
 		if old, _, getErr := repo.GetContent(ctx, repository, path, ref); getErr == nil && string(old) != markdown && !boolDefault(args["force"], false) {
-			return nil, fmt.Errorf("任务已存在且内容不同: %s", task.ID)
+			return nil, fmt.Errorf("runbook 已存在且内容不同: %s", runbook.ID)
 		}
 		_, sha, getErr := repo.GetContent(ctx, repository, path, ref)
 		if getErr != nil && !strings.Contains(getErr.Error(), "404") {
 			return nil, getErr
 		}
-		if err := repo.PutContent(ctx, repository, path, ref, "code-relay: publish "+task.ID, []byte(markdown), sha); err != nil {
+		if err := repo.PutContent(ctx, repository, path, ref, "code-relay: publish "+runbook.ID, []byte(markdown), sha); err != nil {
 			return nil, err
 		}
 		dispatched := false
@@ -92,17 +92,17 @@ func (b *GitHubRemoteBackend) Call(ctx context.Context, session OAuthSession, na
 			if workflow == "" {
 				workflow = b.Workflow
 			}
-			if err := repo.DispatchWorkflow(ctx, repository, workflow, ref, map[string]string{"task_id": task.ID}); err != nil {
-				return nil, fmt.Errorf("任务已提交但 workflow dispatch 失败: %w", err)
+			if err := repo.DispatchWorkflow(ctx, repository, workflow, ref, map[string]string{"runbook_id": runbook.ID}); err != nil {
+				return nil, fmt.Errorf("runbook 已提交但 workflow dispatch 失败: %w", err)
 			}
 			dispatched = true
 		}
-		return map[string]any{"task_id": task.ID, "repository": repository, "ref": ref, "source_commit": task.SourceCommit, "dispatched": dispatched, "storage": "github-api"}, nil
+		return map[string]any{"runbook_id": runbook.ID, "repository": repository, "ref": ref, "source_commit": runbook.SourceCommit, "dispatched": dispatched, "storage": "github-api"}, nil
 	case "fetch_receipt":
-		id := stringArg(args, "task_id")
+		id := stringArg(args, "runbook_id")
 		return b.fetchReceipt(ctx, repo, repository, ref, id)
 	case "analyze":
-		id := stringArg(args, "task_id")
+		id := stringArg(args, "runbook_id")
 		receipt, err := b.fetchReceipt(ctx, repo, repository, ref, id)
 		if err != nil {
 			return nil, err
@@ -165,7 +165,7 @@ func projectBindingArgs(session OAuthSession, args map[string]any) (string, stri
 }
 
 func (b *GitHubRemoteBackend) fetchReceipt(ctx context.Context, repo *GitHubRepositoryClient, repository, ref, id string) (Receipt, error) {
-	if err := validateTaskID(id); err != nil {
+	if err := validateRunbookID(id); err != nil {
 		return Receipt{}, err
 	}
 	receiptRaw, _, err := repo.GetContent(ctx, repository, "receipts/"+id+"/receipt.json", ref)
@@ -176,28 +176,28 @@ func (b *GitHubRemoteBackend) fetchReceipt(ctx context.Context, repo *GitHubRepo
 	if err := jsonUnmarshalLimited(receiptRaw, &receipt); err != nil {
 		return Receipt{}, err
 	}
-	taskRaw, _, err := repo.GetContent(ctx, repository, "tasks/"+id+"/task.md", ref)
+	runbookRaw, _, err := repo.GetContent(ctx, repository, "runbooks/"+id+"/runbook.md", ref)
 	if err != nil {
 		return receipt, err
 	}
-	task, err := parseTask(string(taskRaw))
+	runbook, err := parseRunbook(string(runbookRaw))
 	if err != nil {
 		return receipt, err
 	}
-	return receipt, validateReceipt(receipt, task)
+	return receipt, validateReceipt(receipt, runbook)
 }
 
 func (b *GitHubRemoteBackend) status(ctx context.Context, repo *GitHubRepositoryClient, repository, ref string) ([]map[string]any, error) {
-	tasks, err := repo.ListDirectory(ctx, repository, "tasks", ref)
+	runbooks, err := repo.ListDirectory(ctx, repository, "runbooks", ref)
 	if err != nil {
 		return nil, err
 	}
-	rows := make([]map[string]any, 0, len(tasks))
-	for _, entry := range tasks {
-		if entry.Type != "dir" || !taskID.MatchString(entry.Name) {
+	rows := make([]map[string]any, 0, len(runbooks))
+	for _, entry := range runbooks {
+		if entry.Type != "dir" || !runbookID.MatchString(entry.Name) {
 			continue
 		}
-		row := map[string]any{"task_id": entry.Name, "status": "pending"}
+		row := map[string]any{"runbook_id": entry.Name, "status": "pending"}
 		if receipt, fetchErr := b.fetchReceipt(ctx, repo, repository, ref, entry.Name); fetchErr == nil {
 			row["status"] = receipt.Status
 		}
@@ -214,12 +214,12 @@ func analyzeReceiptValue(id string, receipt Receipt) map[string]any {
 		}
 	}
 	if receipt.Status == "passed" && len(failed) == 0 {
-		return map[string]any{"task_id": id, "conclusion": "done", "summary": "B 验证全部通过，任务完成。", "next_actions": receipt.NextActions}
+		return map[string]any{"runbook_id": id, "conclusion": "done", "summary": "B 验证全部通过，runbook 完成。", "next_actions": receipt.NextActions}
 	}
 	if receipt.Status == "blocked" {
-		return map[string]any{"task_id": id, "conclusion": "blocked", "summary": "B 验证被阻塞，需要用户决策。", "next_actions": receipt.NextActions}
+		return map[string]any{"runbook_id": id, "conclusion": "blocked", "summary": "B 验证被阻塞，需要用户决策。", "next_actions": receipt.NextActions}
 	}
-	return map[string]any{"task_id": id, "conclusion": "iterate", "summary": fmt.Sprintf("B 验证失败 %d 项，建议启动下一轮任务。", len(failed)), "failed_checks": failed, "next_actions": receipt.NextActions}
+	return map[string]any{"runbook_id": id, "conclusion": "iterate", "summary": fmt.Sprintf("B 验证失败 %d 项，建议发布下一版 runbook。", len(failed)), "failed_checks": failed, "next_actions": receipt.NextActions}
 }
 
 func normalizeRef(value string) (string, error) {
@@ -244,7 +244,7 @@ func stringArg(args map[string]any, key string) string {
 }
 
 func jsonUnmarshalLimited(data []byte, out any) error {
-	if len(data) > maxTask {
+	if len(data) > maxRunbook {
 		return errors.New("remote JSON exceeds size limit")
 	}
 	return json.Unmarshal(data, out)

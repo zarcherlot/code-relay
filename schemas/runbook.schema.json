@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://code-relay.dev/schemas/task.schema.json",
-  "title": "Code Relay task",
+  "$id": "https://code-relay.dev/schemas/runbook.schema.json",
+  "title": "Code Relay runbook",
   "type": "object",
   "additionalProperties": false,
-  "required": ["task_id", "source_commit", "target", "objective", "validation_plan", "expected_results"],
+  "required": ["runbook_id", "source_commit", "target", "objective", "validation_plan", "expected_results"],
   "properties": {
-    "task_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+    "runbook_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
     "source_commit": {"type": "string", "pattern": "^[a-fA-F0-9]{7,64}$"},
     "target": {"type": "string", "minLength": 1, "maxLength": 8192},
     "objective": {"type": "string", "minLength": 1, "maxLength": 8192},

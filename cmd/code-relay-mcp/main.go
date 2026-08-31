@@ -16,7 +16,7 @@ import (
 	"github.com/zarcherlot/code-relay/internal/relay"
 )
 
-var version = "2.0.0"
+var version = "3.0.0"
 
 func main() {
 	relay.SetVersion(version)
@@ -61,7 +61,7 @@ func main() {
 		if appErr != nil {
 			fatal("configure GitHub App: %v", appErr)
 		}
-		backend, backendErr := relay.NewGitHubRemoteBackend(app, envOr("CODE_RELAY_GITHUB_WORKFLOW", "verify-on-b.yml"))
+		backend, backendErr := relay.NewGitHubRemoteBackend(app, envOr("CODE_RELAY_GITHUB_WORKFLOW", "checkpoint.yml"))
 		if backendErr != nil {
 			fatal("configure remote backend: %v", backendErr)
 		}

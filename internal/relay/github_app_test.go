@@ -35,9 +35,9 @@ func TestGitHubAppRepositoryAPI(t *testing.T) {
 			_, _ = w.Write([]byte(`{"repositories":[{"full_name":"acme/demo"}]}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/42/access_tokens":
 			_, _ = w.Write([]byte(`{"token":"installation-token","expires_at":"2030-01-01T00:00:00Z"}`))
-		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/contents/tasks/demo/task.md"):
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/contents/runbooks/demo/runbook.md"):
 			_, _ = w.Write([]byte(`{"type":"file","encoding":"base64","content":"aGVsbG8=","sha":"sha-old"}`))
-		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/contents/tasks/demo/task.md"):
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/contents/runbooks/demo/runbook.md"):
 			buf := make([]byte, r.ContentLength)
 			_, _ = r.Body.Read(buf)
 			putBody = string(buf)
@@ -68,16 +68,16 @@ func TestGitHubAppRepositoryAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.PutContent(t.Context(), "acme/demo", "tasks/demo/task.md", "refs/heads/main", "publish", []byte("content"), "sha-old"); err != nil {
+	if err := repo.PutContent(t.Context(), "acme/demo", "runbooks/demo/runbook.md", "refs/heads/main", "publish", []byte("content"), "sha-old"); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.DispatchWorkflow(t.Context(), "acme/demo", "verify-on-b.yml", "refs/heads/main", map[string]string{"task_id": "demo"}); err != nil {
+	if err := repo.DispatchWorkflow(t.Context(), "acme/demo", "checkpoint.yml", "refs/heads/main", map[string]string{"runbook_id": "demo"}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(putBody, "sha-old") || !strings.Contains(putBody, "content") {
 		t.Fatalf("unexpected put body: %s", putBody)
 	}
-	if !strings.Contains(dispatchBody, `"task_id":"demo"`) {
+	if !strings.Contains(dispatchBody, `"runbook_id":"demo"`) {
 		t.Fatalf("unexpected dispatch body: %s", dispatchBody)
 	}
 	if _, err := normalizeRepository("acme/demo/extra"); err == nil {
@@ -97,7 +97,7 @@ func TestFindUserInstallationForRepositoryRejectsAllRepositories(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	app := NewGitHubAppVerifier(server.URL)
+	app := NewGitHubAppMembershipClient(server.URL)
 	installationID, err := app.FindUserInstallationForRepository(t.Context(), "user-token", "code-relay-mcp", "acme/demo")
 	if err != nil || installationID != 3 {
 		t.Fatalf("installation = %d, %v", installationID, err)

@@ -1,6 +1,6 @@
 # Code Relay runtime deployment
 
-The supported default verifier path is the repository's GitHub Actions workflow on a dedicated `codex-b` self-hosted runner. The service definitions below are optional compatibility examples for controlled deployments that deliberately choose the local `daemon` command; the plugin does not install or start them automatically.
+The supported default checkpoint path is the repository's GitHub Actions workflow on a dedicated `codex-b` self-hosted runner. The service definitions below are optional compatibility examples for controlled deployments that deliberately choose the local `daemon` command; the plugin does not install or start them automatically.
 
 The daemon binds to `127.0.0.1` by default. Binding to any other address is
 rejected unless `CODE_RELAY_WEBHOOK_SECRET` is configured with at least 32
@@ -17,7 +17,7 @@ sudo systemctl enable --now code-relay-agent
 
 ## Windows
 
-Run `deploy/install-code-relay-service.ps1` from an elevated PowerShell session to register `code-relay-agent-windows-amd64.exe` as an automatic service. Use a dedicated service account and grant it access only to the verifier project directory. The agent itself handles Ctrl+C shutdown and bounded child processes.
+Run `deploy/install-code-relay-service.ps1` from an elevated PowerShell session to register `code-relay-agent-windows-amd64.exe` as an automatic service. Use a dedicated service account and grant it access only to the checkpoint project directory. The agent itself handles Ctrl+C shutdown and bounded child processes.
 
 ## macOS
 
@@ -29,4 +29,4 @@ launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.code-relay.ag
 launchctl enable "gui/$(id -u)/com.code-relay.agent"
 ```
 
-The plist runs the verifier daemon with launchd-managed restart and logs. For a system-wide daemon, use a root-owned LaunchDaemon plist and a dedicated service account instead of LaunchAgents.
+The plist runs the checkpoint daemon with launchd-managed restart and logs. For a system-wide daemon, use a root-owned LaunchDaemon plist and a dedicated service account instead of LaunchAgents.

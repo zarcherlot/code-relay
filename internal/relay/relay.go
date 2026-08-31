@@ -18,18 +18,18 @@ import (
 )
 
 const (
-	newMeta  = ".code-relay"
-	maxTask  = 1 << 20
-	maxQueue = 50 << 20
+	newMeta    = ".code-relay"
+	maxRunbook = 1 << 20
+	maxQueue   = 50 << 20
 )
 
-var taskID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+var runbookID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var commitSHA = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
 var receiptSHA = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 var branchRef = regexp.MustCompile(`^refs/heads/[A-Za-z0-9._/-]+$`)
 var atomicPathLocks [64]sync.Mutex
 
-type Task struct {
+type Runbook struct {
 	ID           string
 	SourceCommit string
 	Target       string
@@ -47,15 +47,15 @@ type Check struct {
 	Duration float64 `json:"duration_seconds,omitempty"`
 }
 type Receipt struct {
-	TaskID       string            `json:"task_id"`
-	SourceCommit string            `json:"source_commit"`
-	Status       string            `json:"status"`
-	Checks       []Check           `json:"checks"`
-	Risks        []string          `json:"risks"`
-	NextActions  []string          `json:"next_actions"`
-	VerifiedAt   string            `json:"verified_at"`
-	Environment  map[string]string `json:"environment"`
-	TaskSHA256   string            `json:"task_sha256,omitempty"`
+	RunbookID     string            `json:"runbook_id"`
+	SourceCommit  string            `json:"source_commit"`
+	Status        string            `json:"status"`
+	Checks        []Check           `json:"checks"`
+	Risks         []string          `json:"risks"`
+	NextActions   []string          `json:"next_actions"`
+	VerifiedAt    string            `json:"verified_at"`
+	Environment   map[string]string `json:"environment"`
+	RunbookSHA256 string            `json:"runbook_sha256,omitempty"`
 }
 
 func meta(root string) string {
@@ -92,7 +92,7 @@ func readJSON(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || info.Size() > maxTask {
+	if info.Mode()&os.ModeSymlink != 0 || info.Size() > maxRunbook {
 		return errors.New("refusing unsafe JSON file")
 	}
 	data, err := os.ReadFile(path)
@@ -102,15 +102,15 @@ func readJSON(path string, value any) error {
 	return json.Unmarshal(data, value)
 }
 
-func parseTask(raw string) (Task, error) {
-	if len([]byte(raw)) > maxTask {
-		return Task{}, errors.New("task.md 超过 1 MiB 大小限制")
+func parseRunbook(raw string) (Runbook, error) {
+	if len([]byte(raw)) > maxRunbook {
+		return Runbook{}, errors.New("runbook.md 超过 1 MiB 大小限制")
 	}
-	t := Task{Raw: raw}
+	t := Runbook{Raw: raw}
 	meta := map[string]string{}
 	section := ""
 	scanner := bufio.NewScanner(strings.NewReader(raw))
-	scanner.Buffer(make([]byte, 64*1024), maxTask)
+	scanner.Buffer(make([]byte, 64*1024), maxRunbook)
 	for scanner.Scan() {
 		line := scanner.Text()
 		trim := strings.TrimSpace(line)
@@ -123,7 +123,7 @@ func parseTask(raw string) (Task, error) {
 			if i := strings.Index(item, ":"); i > 0 && section == "" {
 				key, value := strings.TrimSpace(item[:i]), strings.TrimSpace(item[i+1:])
 				if _, exists := meta[key]; exists {
-					return Task{}, fmt.Errorf("task.md 元数据重复: %s", key)
+					return Runbook{}, fmt.Errorf("runbook.md 元数据重复: %s", key)
 				}
 				meta[key] = value
 			}
@@ -145,17 +145,17 @@ func parseTask(raw string) (Task, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return Task{}, fmt.Errorf("无法读取 task.md: %w", err)
+		return Runbook{}, fmt.Errorf("无法读取 runbook.md: %w", err)
 	}
-	t.ID, t.SourceCommit, t.Target, t.Objective = meta["task_id"], meta["source_commit"], meta["target"], meta["objective"]
-	if !taskID.MatchString(t.ID) {
-		return t, fmt.Errorf("非法 task_id: %s", t.ID)
+	t.ID, t.SourceCommit, t.Target, t.Objective = meta["runbook_id"], meta["source_commit"], meta["target"], meta["objective"]
+	if !runbookID.MatchString(t.ID) {
+		return t, fmt.Errorf("非法 runbook_id: %s", t.ID)
 	}
 	if !commitSHA.MatchString(t.SourceCommit) {
 		return t, errors.New("source_commit 必须是 7-64 位十六进制 SHA")
 	}
 	if t.Target == "" || len(t.Target) > maxFieldLength || t.Objective == "" || len(t.Objective) > maxFieldLength || len(t.Plan) == 0 || len(t.Plan) > 100 || len(t.Expected) == 0 || len(t.Expected) > 100 {
-		return t, errors.New("task.md 缺少 target/objective/Validation Plan/Expected Results")
+		return t, errors.New("runbook.md 缺少 target/objective/Validation Plan/Expected Results")
 	}
 	for _, item := range append(append([]string{}, t.Plan...), t.Expected...) {
 		if len(item) == 0 || len(item) > maxFieldLength {
@@ -165,12 +165,12 @@ func parseTask(raw string) (Task, error) {
 	return t, nil
 }
 
-func ValidateTaskFile(path string) error {
+func ValidateRunbookFile(path string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	_, err = parseTask(string(raw))
+	_, err = parseRunbook(string(raw))
 	return err
 }
 
@@ -281,11 +281,11 @@ func runCommand(argv []string, cwd string, timeout int) (int, string, bool, erro
 	return 0, text, false, nil
 }
 
-func RunTask(root, id string, timeout int, worktree string) (Receipt, error) {
-	if err := validateTaskID(id); err != nil {
+func RunRunbook(root, id string, timeout int, worktree string) (Receipt, error) {
+	if err := validateRunbookID(id); err != nil {
 		return Receipt{}, err
 	}
-	path, err := projectPath(root, "tasks", id, "task.md")
+	path, err := projectPath(root, "runbooks", id, "runbook.md")
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -293,9 +293,9 @@ func RunTask(root, id string, timeout int, worktree string) (Receipt, error) {
 	if err != nil {
 		return Receipt{}, err
 	}
-	task, err := parseTask(string(raw))
+	runbook, err := parseRunbook(string(raw))
 	if err != nil {
-		return Receipt{TaskID: id, Status: "blocked", Checks: []Check{{Name: "任务协议", Expected: "task.md 通过协议校验", Actual: err.Error(), Status: "blocked"}}, Risks: []string{"task.md 不符合 Code Relay 协议"}, NextActions: []string{"修正 task.md 后重新发布"}, VerifiedAt: now(), Environment: map[string]string{"platform": runtime.GOOS + "/" + runtime.GOARCH}}, nil
+		return Receipt{RunbookID: id, Status: "blocked", Checks: []Check{{Name: "Runbook 协议", Expected: "runbook.md 通过协议校验", Actual: err.Error(), Status: "blocked"}}, Risks: []string{"runbook.md 不符合 Code Relay 协议"}, NextActions: []string{"修正 runbook.md 后重新发布"}, VerifiedAt: now(), Environment: map[string]string{"platform": runtime.GOOS + "/" + runtime.GOARCH}}, nil
 	}
 	cwd, err := pathWithinRoot(root, root)
 	if err != nil {
@@ -304,19 +304,19 @@ func RunTask(root, id string, timeout int, worktree string) (Receipt, error) {
 	if worktree != "" {
 		cwd, err = pathWithinRoot(root, worktree)
 		if err != nil {
-			return blocked(task, err.Error()), nil
+			return blocked(runbook, err.Error()), nil
 		}
 	}
 	if info, statErr := os.Stat(cwd); statErr != nil || !info.IsDir() {
-		return blocked(task, "验证工作目录不存在或不是目录: "+cwd), nil
+		return blocked(runbook, "验证工作目录不存在或不是目录: "+cwd), nil
 	}
-	lock, lockErr := acquireTaskLock(root, task.ID, 10*time.Second)
+	lock, lockErr := acquireRunbookLock(root, runbook.ID, 10*time.Second)
 	if lockErr != nil {
 		return Receipt{}, lockErr
 	}
 	defer lock.release()
-	r := Receipt{TaskID: task.ID, SourceCommit: task.SourceCommit, Status: "passed", VerifiedAt: now(), Environment: map[string]string{"platform": runtime.GOOS + "/" + runtime.GOARCH, "go": runtime.Version(), "cwd": cwd}}
-	for i, item := range task.Plan {
+	r := Receipt{RunbookID: runbook.ID, SourceCommit: runbook.SourceCommit, Status: "passed", VerifiedAt: now(), Environment: map[string]string{"platform": runtime.GOOS + "/" + runtime.GOARCH, "go": runtime.Version(), "cwd": cwd}}
+	for i, item := range runbook.Plan {
 		argv, e := parseCommand(item)
 		name := fmt.Sprintf("验证命令 %d: %s", i+1, item)
 		if e != nil {
@@ -349,17 +349,17 @@ func RunTask(root, id string, timeout int, worktree string) (Receipt, error) {
 	if r.Status == "failed" && len(r.NextActions) == 0 {
 		r.NextActions = []string{"查看验证日志并决定是否启动下一轮"}
 	}
-	r.TaskSHA256 = sha256Hex([]byte(raw))
+	r.RunbookSHA256 = sha256Hex([]byte(raw))
 	return r, nil
 }
 
 // PersistReceipt writes both machine-readable and human-readable artifacts.
 // The write is idempotent and keeps the stable directory contract.
 func PersistReceipt(root string, receipt Receipt) error {
-	if err := validateTaskID(receipt.TaskID); err != nil {
+	if err := validateRunbookID(receipt.RunbookID); err != nil {
 		return err
 	}
-	dir, err := projectPath(root, "receipts", receipt.TaskID)
+	dir, err := projectPath(root, "receipts", receipt.RunbookID)
 	if err != nil {
 		return err
 	}
@@ -367,7 +367,7 @@ func PersistReceipt(root string, receipt Receipt) error {
 		return err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Receipt\n\n- task_id: %s\n- source_commit: %s\n- status: %s\n- verified_at: %s\n\n## Checks\n", receipt.TaskID, receipt.SourceCommit, receipt.Status, receipt.VerifiedAt)
+	fmt.Fprintf(&b, "# Receipt\n\n- runbook_id: %s\n- source_commit: %s\n- status: %s\n- verified_at: %s\n\n## Checks\n", receipt.RunbookID, receipt.SourceCommit, receipt.Status, receipt.VerifiedAt)
 	for _, check := range receipt.Checks {
 		fmt.Fprintf(&b, "- %s: %s (expected: %s; actual: %s)\n", check.Name, check.Status, check.Expected, check.Actual)
 	}
@@ -422,8 +422,8 @@ func writeAtomicFile(path string, data []byte) error {
 	}
 	return syncDir(filepath.Dir(path))
 }
-func blocked(t Task, actual string) Receipt {
-	return Receipt{TaskID: t.ID, SourceCommit: t.SourceCommit, Status: "blocked", Checks: []Check{{Name: "验证工作目录", Expected: "位于仓库目录内且存在", Actual: actual, Status: "blocked"}}, Risks: []string{"验证工作目录必须位于绑定工程内"}, NextActions: []string{"选择工程内的隔离 worktree 后重新执行"}, VerifiedAt: now(), Environment: map[string]string{"platform": runtime.GOOS + "/" + runtime.GOARCH}}
+func blocked(t Runbook, actual string) Receipt {
+	return Receipt{RunbookID: t.ID, SourceCommit: t.SourceCommit, Status: "blocked", Checks: []Check{{Name: "验证工作目录", Expected: "位于仓库目录内且存在", Actual: actual, Status: "blocked"}}, Risks: []string{"验证工作目录必须位于绑定工程内"}, NextActions: []string{"选择工程内的隔离 worktree 后重新执行"}, VerifiedAt: now(), Environment: map[string]string{"platform": runtime.GOOS + "/" + runtime.GOARCH}}
 }
 func sha256Hex(data []byte) string { return fmt.Sprintf("%x", sha256.Sum256(data)) }
 func max(a, b int) int {
@@ -440,7 +440,7 @@ func min(a, b int) int {
 }
 
 func Status(root string) (any, error) {
-	base, err := projectPath(root, "tasks")
+	base, err := projectPath(root, "runbooks")
 	if err != nil {
 		return nil, err
 	}
@@ -456,10 +456,10 @@ func Status(root string) (any, error) {
 		if !e.IsDir() {
 			continue
 		}
-		t, taskErr := readTask(root, e.Name())
-		if taskErr != nil {
-			if taskID.MatchString(e.Name()) {
-				rows = append(rows, map[string]any{"task_id": e.Name(), "status": "invalid", "error": taskErr.Error()})
+		t, runbookErr := readRunbook(root, e.Name())
+		if runbookErr != nil {
+			if runbookID.MatchString(e.Name()) {
+				rows = append(rows, map[string]any{"runbook_id": e.Name(), "status": "invalid", "error": runbookErr.Error()})
 			}
 			continue
 		}
@@ -467,22 +467,22 @@ func Status(root string) (any, error) {
 		if pathErr != nil {
 			return nil, pathErr
 		}
-		status := "task_published"
+		status := "runbook_published"
 		var rec Receipt
 		if readJSON(rp, &rec) == nil && validateReceipt(rec, t) == nil {
 			status = rec.Status
 		} else if _, statErr := os.Stat(rp); statErr == nil {
 			status = "invalid"
 		}
-		rows = append(rows, map[string]any{"task_id": t.ID, "source_commit": t.SourceCommit, "target": t.Target, "status": status})
+		rows = append(rows, map[string]any{"runbook_id": t.ID, "source_commit": t.SourceCommit, "target": t.Target, "status": status})
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i]["task_id"].(string) < rows[j]["task_id"].(string) })
+	sort.Slice(rows, func(i, j int) bool { return rows[i]["runbook_id"].(string) < rows[j]["runbook_id"].(string) })
 	return rows, nil
 }
 
-func validateReceipt(receipt Receipt, task Task) error {
-	if receipt.TaskID != task.ID || receipt.SourceCommit != task.SourceCommit {
-		return errors.New("receipt task binding mismatch")
+func validateReceipt(receipt Receipt, runbook Runbook) error {
+	if receipt.RunbookID != runbook.ID || receipt.SourceCommit != runbook.SourceCommit {
+		return errors.New("receipt runbook binding mismatch")
 	}
 	if receipt.Status != "passed" && receipt.Status != "failed" && receipt.Status != "blocked" {
 		return errors.New("invalid receipt status")
@@ -493,8 +493,8 @@ func validateReceipt(receipt Receipt, task Task) error {
 	if len(receipt.Risks) > 100 || len(receipt.NextActions) > 100 {
 		return errors.New("too many receipt risks or next actions")
 	}
-	if receipt.TaskSHA256 != "" && !receiptSHA.MatchString(receipt.TaskSHA256) {
-		return errors.New("invalid receipt task_sha256")
+	if receipt.RunbookSHA256 != "" && !receiptSHA.MatchString(receipt.RunbookSHA256) {
+		return errors.New("invalid receipt runbook_sha256")
 	}
 	if len(receipt.VerifiedAt) > maxFieldLength {
 		return errors.New("receipt verified_at too long")
@@ -553,8 +553,8 @@ func Doctor(root string) (map[string]any, error) {
 	}
 	if _, projectErr := os.Stat(filepath.Join(metadata, "project.json")); projectErr == nil {
 		add("binding", "ok", "发现 orchestrator 绑定")
-	} else if _, verifierErr := os.Stat(filepath.Join(metadata, "verifier.json")); verifierErr == nil {
-		add("binding", "ok", "发现 verifier 绑定")
+	} else if _, checkpointErr := os.Stat(filepath.Join(metadata, "checkpoint.json")); checkpointErr == nil {
+		add("binding", "ok", "发现 checkpoint 绑定")
 	} else {
 		add("binding", "warning", "尚未发现绑定配置")
 	}
@@ -585,62 +585,62 @@ func Watch(root string, interval float64) error {
 		return errors.New("poll interval must be 1..3600")
 	}
 	for {
-		if err := syncTasks(root); err != nil {
+		if err := syncRunbooks(root); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			logEvent("sync_error", map[string]any{"runtime": "go"})
 		}
 		time.Sleep(time.Duration(interval * float64(time.Second)))
 	}
 }
-func syncTasks(root string) error {
+func syncRunbooks(root string) error {
 	root, err := pathWithinRoot(root, root)
 	if err != nil {
 		return err
 	}
 	cfg := map[string]any{}
-	configPath, err := projectPath(root, newMeta, "verifier.json")
+	configPath, err := projectPath(root, newMeta, "checkpoint.json")
 	if err != nil {
 		return err
 	}
 	if err := readJSON(configPath, &cfg); err != nil {
 		return err
 	}
-	if version, ok := cfg["schema_version"].(float64); !ok || version != 1 {
-		return errors.New("invalid verifier schema_version")
+	if version, ok := cfg["schema_version"].(float64); !ok || version != bindingSchemaVersion {
+		return errors.New("invalid checkpoint schema_version")
 	}
 	repository, ok := cfg["repository"].(string)
 	if !ok {
-		return errors.New("invalid verifier repository")
+		return errors.New("invalid checkpoint repository")
 	}
 	repository, err = sanitizeRemote(repository)
 	if err != nil {
-		return errors.New("invalid verifier repository")
+		return errors.New("invalid checkpoint repository")
 	}
 	remote, err := canonicalRepo(root)
 	if err != nil || remote != repository {
-		return errors.New("verifier repository does not match origin")
+		return errors.New("checkpoint repository does not match origin")
 	}
 	ref, _ := cfg["ref"].(string)
 	if !branchRef.MatchString(ref) {
-		return errors.New("invalid verifier ref")
+		return errors.New("invalid checkpoint ref")
 	}
 	if _, err := runGit(root, gitTimeout, "fetch", "--quiet", "origin", ref); err != nil {
 		return err
 	}
-	out, err := runGit(root, gitTimeout, "ls-tree", "-r", "--name-only", "FETCH_HEAD", "--", "tasks")
+	out, err := runGit(root, gitTimeout, "ls-tree", "-r", "--name-only", "FETCH_HEAD", "--", "runbooks")
 	if err != nil {
 		return err
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		parts := strings.Split(line, "/")
-		if len(parts) != 3 || parts[0] != "tasks" || parts[2] != "task.md" || !taskID.MatchString(parts[1]) {
+		if len(parts) != 3 || parts[0] != "runbooks" || parts[2] != "runbook.md" || !runbookID.MatchString(parts[1]) {
 			continue
 		}
 		shown, er := runGit(root, gitTimeout, "show", "FETCH_HEAD:"+line)
-		if er != nil || len(shown) > maxTask {
+		if er != nil || len(shown) > maxRunbook {
 			continue
 		}
-		dest, pathErr := projectPath(root, newMeta, "inbox", "tasks", parts[1], "task.md")
+		dest, pathErr := projectPath(root, newMeta, "inbox", "runbooks", parts[1], "runbook.md")
 		if pathErr != nil {
 			return pathErr
 		}

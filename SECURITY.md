@@ -2,14 +2,14 @@
 
 ## Scope
 
-Code Relay moves source references, task instructions, validation commands, and receipts through GitHub Actions. The Go agent executes commands on a verifier runner. Treat every task and invitation as untrusted input until it has been reviewed.
+Code Relay moves source references, runbook instructions, validation commands, and receipts through GitHub Actions. The Go agent executes commands on a checkpoint runner. Treat every runbook and invitation as untrusted input until it has been reviewed.
 
 ## Current MVP boundaries
 
 - Invitations are short-lived bearer links by default. Set `CODE_RELAY_INVITE_SECRET` to the same 32+ character secret on A and B to add HMAC integrity verification. Anyone who obtains an unexpired unsigned link can otherwise attempt to join the encoded repository/ref. Do not paste invitations or secrets into public issues or logs.
-- The verifier runtime allowlists project executables, rejects shell interpreters and inline eval/exec escape modes, and blocks destructive command patterns. This is defense-in-depth rather than a sandbox.
+- The checkpoint runtime allowlists project executables, rejects shell interpreters and inline eval/exec escape modes, and blocks destructive command patterns. This is defense-in-depth rather than a sandbox.
 - Use a dedicated low-privilege self-hosted runner and a separate worktree for validation.
-- Give GitHub tokens only the minimum contents/actions permissions required to fetch tasks and publish receipts.
+- Give GitHub tokens only the minimum contents/actions permissions required to fetch runbooks and publish receipts.
 - Keep webhook secrets out of Git and validate `X-Hub-Signature-256` when a webhook is enabled.
 - The optional daemon defaults to loopback and refuses non-loopback listeners without a 32+ character `CODE_RELAY_WEBHOOK_SECRET`.
 
@@ -30,9 +30,9 @@ Before production use, the project should add asymmetric signed invitations or a
 
 ## Runtime hardening in 2.0
 
-- The Go agent is the only Relay verifier runtime. Validation commands are explicitly configured per project and never fall back to an undeclared runtime.
+- The Go agent is the only Relay checkpoint runtime. Validation commands are explicitly configured per project and never fall back to an undeclared runtime.
 - Validation commands run as structured argv without a shell. The shared policy is in `schemas/runtime-policy.json` and is checked by Go tests.
-- Task execution is serialized per `task_id`; queue scans and receipt publication also use project-scoped locks. Invalid or interrupted receipts are safely reprocessed, and one-time invitation nonces are consumed before verifier state is committed.
-- Configuration, tasks, receipts, and locks stay inside the project root, use durable atomic replacement, and reject symlink path components. Remote credentials are removed from persisted metadata and errors.
+- Runbook execution is serialized per `runbook_id`; queue scans and receipt publication also use project-scoped locks. Invalid or interrupted receipts are safely reprocessed, and one-time invitation nonces are consumed before checkpoint state is committed.
+- Configuration, runbooks, receipts, and locks stay inside the project root, use durable atomic replacement, and reject symlink path components. Remote credentials are removed from persisted metadata and errors.
 - MCP input has strict JSON-RPC and parameter validation, bounded request sizes, and recovery after malformed or oversized messages.
 - Git and validation child-process trees have timeouts, output limits, and sensitive environment filtering. Use `code-relay-agent doctor --root <project>` before enabling a runner.

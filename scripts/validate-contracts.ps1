@@ -16,7 +16,7 @@ function Read-Json([string]$relativePath) {
 $schemaFiles = @(
   "schemas/binding.schema.json",
   "schemas/receipt.schema.json",
-  "schemas/task.schema.json"
+  "schemas/runbook.schema.json"
 )
 foreach ($file in $schemaFiles) {
   $schema = Read-Json $file
@@ -24,14 +24,18 @@ foreach ($file in $schemaFiles) {
     throw "Schema is missing `$schema: $file"
   }
 }
+$bindingSchema = Read-Json "schemas/binding.schema.json"
+if ($bindingSchema.properties.schema_version.const -ne 2) {
+  throw "Binding schema must use protocol version 2"
+}
 $policy = Read-Json "schemas/runtime-policy.json"
 foreach ($field in @("allowed_commands", "denied_command_arguments", "deny_tokens", "shell_operators", "sensitive_env_keys")) {
   if ($null -eq $policy.$field) { throw "Runtime policy is missing $field" }
 }
 
 $manifest = Read-Json ".codex-plugin/plugin.json"
-if ($manifest.name -ne "code-relay" -or $manifest.version -notmatch '^2\.0\.0(?:\+codex\.[A-Za-z0-9._-]+)?$') {
-  throw "Plugin manifest must identify code-relay 2.0.0, optionally with a Codex cachebuster"
+if ($manifest.name -ne "code-relay" -or $manifest.version -notmatch '^3\.0\.0(?:\+codex\.[A-Za-z0-9._-]+)?$') {
+  throw "Plugin manifest must identify code-relay 3.0.0, optionally with a Codex cachebuster"
 }
 if ($manifest.interface.displayName -ne "Code Relay") {
   throw "Plugin display name must be Code Relay"
@@ -53,17 +57,26 @@ $remoteEnvText = Get-Content -LiteralPath $remoteEnv -Raw
 foreach ($name in @("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID", "CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET", "CODE_RELAY_SESSION_SECRET", "CODE_RELAY_GITHUB_APP_ID", "CODE_RELAY_GITHUB_APP_PRIVATE_KEY_FILE")) {
   if ($remoteEnvText -notmatch [regex]::Escape($name)) { throw "Hosted MCP environment example is missing $name" }
 }
+$checkpointWorkflowPath = Join-Path $root ".github/workflows/checkpoint.yml"
+if (-not (Test-Path -LiteralPath $checkpointWorkflowPath -PathType Leaf)) { throw "Missing checkpoint workflow" }
+$checkpointWorkflow = Get-Content -LiteralPath $checkpointWorkflowPath -Raw
+foreach ($fragment in @('runbooks/**', 'runbook_id:', 'jobs:', 'checkpoint:')) {
+  if ($checkpointWorkflow -notmatch [regex]::Escape($fragment)) { throw "Checkpoint workflow is missing $fragment" }
+}
+foreach ($legacyFragment in @('tasks/**', 'task_id:', 'verify-on-b')) {
+  if ($checkpointWorkflow -match [regex]::Escape($legacyFragment)) { throw "Checkpoint workflow contains legacy contract $legacyFragment" }
+}
 
-$task = Read-Json "examples/task-001.json"
-foreach ($field in @("task_id", "source_commit", "target", "objective", "validation_plan", "expected_results")) {
-  if ($null -eq $task.$field) { throw "Task example is missing $field" }
+$runbook = Read-Json "examples/runbook-001.json"
+foreach ($field in @("runbook_id", "source_commit", "target", "objective", "validation_plan", "expected_results")) {
+  if ($null -eq $runbook.$field) { throw "Runbook example is missing $field" }
 }
 $receipt = Read-Json "examples/receipt-001.json"
-foreach ($field in @("task_id", "source_commit", "status", "checks")) {
+foreach ($field in @("runbook_id", "source_commit", "status", "checks")) {
   if ($null -eq $receipt.$field) { throw "Receipt example is missing $field" }
 }
 if ($receipt.status -notin @("passed", "failed", "blocked")) {
   throw "Receipt example has an invalid status"
 }
 
-Write-Output "Code Relay contracts validated: $($schemaFiles.Count) schemas, plugin $($manifest.version), MCP, task and receipt fixtures."
+Write-Output "Code Relay contracts validated: $($schemaFiles.Count) schemas, plugin $($manifest.version), MCP, runbook and receipt fixtures."

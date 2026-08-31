@@ -50,7 +50,7 @@ only inside that organization.
 The repository now contains both the local stdio MCP package and a hosted
 HTTPS MCP gateway. Hosted mode is enabled by the GitHub OAuth/GitHub App
 environment variables documented in `deploy/remote-mcp.env.example`; it does
-not mount a project checkout and uses GitHub as the task/receipt source of
+not mount a project checkout and uses GitHub as the runbook/receipt source of
 truth. The deployment and rollout gates are documented in
 `deploy/REMOTE-MCP-PLAN.md` and the audit cases in
 `deploy/REMOTE-MCP-TEST-MATRIX.md`.

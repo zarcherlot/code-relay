@@ -51,16 +51,16 @@ func mcpTools() []map[string]any {
 	}
 	root := map[string]any{"type": "string"}
 	return []map[string]any{
-		tool("bind_project", "Bind the current project and branch to Code Relay.", map[string]any{"root": root, "role": map[string]any{"type": "string", "enum": []string{"orchestrator", "verifier"}}, "ref": map[string]any{"type": "string"}}, []string{"role"}, false, true, true),
-		tool("create_verifier_invite", "Create a short-lived verifier join link.", map[string]any{"root": root, "expires": map[string]any{"type": "integer", "minimum": 5, "maximum": 1440}, "one_time": map[string]any{"type": "boolean"}}, nil, false, true, false),
-		tool("join_verifier", "Join a branch-scoped verifier subscription.", map[string]any{"root": root, "url": map[string]any{"type": "string"}, "destination": map[string]any{"type": "string"}}, []string{"url"}, false, true, true),
+		tool("bind_project", "Bind the current project and branch to Code Relay.", map[string]any{"root": root, "role": map[string]any{"type": "string", "enum": []string{"orchestrator", "checkpoint"}}, "ref": map[string]any{"type": "string"}}, []string{"role"}, false, true, true),
+		tool("create_checkpoint_invite", "Create a short-lived checkpoint join link.", map[string]any{"root": root, "expires": map[string]any{"type": "integer", "minimum": 5, "maximum": 1440}, "one_time": map[string]any{"type": "boolean"}}, nil, false, true, false),
+		tool("join_checkpoint", "Join a branch-scoped checkpoint subscription.", map[string]any{"root": root, "url": map[string]any{"type": "string"}, "destination": map[string]any{"type": "string"}}, []string{"url"}, false, true, true),
 		tool("watcher_status", "Show the legacy local watcher state.", map[string]any{"root": root}, nil, true, false, false),
 		tool("stop_watcher", "Stop the legacy local watcher state.", map[string]any{"root": root}, nil, false, false, true),
 		tool("doctor", "Run non-mutating local health checks.", map[string]any{"root": root}, nil, true, false, false),
-		tool("publish_task", "Validate and publish a task.md.", map[string]any{"root": root, "markdown": map[string]any{"type": "string"}, "force": map[string]any{"type": "boolean"}, "no_git": map[string]any{"type": "boolean"}}, []string{"markdown"}, false, true, true),
-		tool("status", "Show task and receipt status.", map[string]any{"root": root}, nil, true, false, false),
-		tool("fetch_receipt", "Load and validate a task receipt.", map[string]any{"root": root, "task_id": map[string]any{"type": "string"}}, []string{"task_id"}, true, false, false),
-		tool("analyze", "Analyze a task receipt and determine the next state.", map[string]any{"root": root, "task_id": map[string]any{"type": "string"}}, []string{"task_id"}, true, false, false),
+		tool("publish_runbook", "Validate and publish a runbook.md.", map[string]any{"root": root, "markdown": map[string]any{"type": "string"}, "force": map[string]any{"type": "boolean"}, "no_git": map[string]any{"type": "boolean"}}, []string{"markdown"}, false, true, true),
+		tool("status", "Show runbook and receipt status.", map[string]any{"root": root}, nil, true, false, false),
+		tool("fetch_receipt", "Load and validate a runbook receipt.", map[string]any{"root": root, "runbook_id": map[string]any{"type": "string"}}, []string{"runbook_id"}, true, false, false),
+		tool("analyze", "Analyze a runbook receipt and determine the next state.", map[string]any{"root": root, "runbook_id": map[string]any{"type": "string"}}, []string{"runbook_id"}, true, false, false),
 	}
 }
 
@@ -69,7 +69,7 @@ func MCPStdio(in io.Reader, out io.Writer) error {
 	encoder := json.NewEncoder(out)
 	encoder.SetEscapeHTML(false)
 	for {
-		line, oversized, err := readMCPLine(reader, 2*maxTask)
+		line, oversized, err := readMCPLine(reader, 2*maxRunbook)
 		if errors.Is(err, io.EOF) && len(line) == 0 && !oversized {
 			return nil
 		}
@@ -170,7 +170,7 @@ func readMCPLine(reader *bufio.Reader, limit int) ([]byte, bool, error) {
 	}
 }
 
-var versionString = "2.0.0"
+var versionString = "3.0.0"
 
 func SetVersion(value string) {
 	if value != "" {
@@ -199,9 +199,9 @@ func callMCPTool(name string, args map[string]any) (any, error) {
 			value["invite"] = invite
 		}
 		return value, nil
-	case "create_verifier_invite":
+	case "create_checkpoint_invite":
 		return CreateInvite(root, intNumber(args["expires"], 30), boolDefault(args["one_time"], true))
-	case "join_verifier":
+	case "join_checkpoint":
 		url, _ := args["url"].(string)
 		if destination, ok := args["destination"].(string); ok && destination != "" {
 			return CloneAndJoin(root, url, destination)
@@ -209,23 +209,23 @@ func callMCPTool(name string, args map[string]any) (any, error) {
 		if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
 			return nil, fmt.Errorf("当前目录不是 Git 工程；请提供 destination 以克隆邀请中的仓库")
 		}
-		return JoinVerifier(root, url)
+		return JoinCheckpoint(root, url)
 	case "watcher_status":
 		return WatcherStatus(root), nil
 	case "stop_watcher":
 		return StopWatcher(root), nil
 	case "doctor":
 		return Doctor(root)
-	case "publish_task":
+	case "publish_runbook":
 		markdown, _ := args["markdown"].(string)
-		return PublishTask(root, markdown, boolDefault(args["force"], false), boolDefault(args["no_git"], true))
+		return PublishRunbook(root, markdown, boolDefault(args["force"], false), boolDefault(args["no_git"], true))
 	case "status":
 		return Status(root)
 	case "fetch_receipt":
-		id, _ := args["task_id"].(string)
+		id, _ := args["runbook_id"].(string)
 		return FetchReceipt(root, id)
 	case "analyze":
-		id, _ := args["task_id"].(string)
+		id, _ := args["runbook_id"].(string)
 		return Analyze(root, id)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
