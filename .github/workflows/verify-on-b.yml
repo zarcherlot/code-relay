@@ -2,6 +2,8 @@ name: Code Relay - verify on B
 
 on:
   push:
+    tags-ignore:
+      - "v*.*.*"
     paths:
       - "tasks/**"
   workflow_dispatch:

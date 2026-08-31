@@ -2,6 +2,8 @@ name: Code Relay Go runtime
 
 on:
   push:
+    tags-ignore:
+      - "v*.*.*"
     paths:
       - "cmd/**"
       - "internal/**"
