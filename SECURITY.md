@@ -11,6 +11,7 @@ Code Relay moves source references, task instructions, validation commands, and 
 - Use a dedicated low-privilege self-hosted runner and a separate worktree for validation.
 - Give GitHub tokens only the minimum contents/actions permissions required to fetch tasks and publish receipts.
 - Keep webhook secrets out of Git and validate `X-Hub-Signature-256` when a webhook is enabled.
+- The optional daemon defaults to loopback and refuses non-loopback listeners without a 32+ character `CODE_RELAY_WEBHOOK_SECRET`.
 
 ## Reporting a vulnerability
 

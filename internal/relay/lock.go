@@ -25,7 +25,7 @@ func acquireTaskLock(root, taskID string, timeout time.Duration) (*taskLock, err
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := ensurePrivateDir(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
 	deadline := time.Now().Add(timeout)

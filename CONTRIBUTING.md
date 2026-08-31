@@ -17,7 +17,10 @@ Run the complete test and compile checks from the repository root:
 go test ./...
 go vet ./...
 go build ./cmd/code-relay-agent
+./scripts/validate-contracts.ps1
+./scripts/smoke-e2e.ps1
 ./scripts/package-plugin.ps1 -Output dist/plugin-smoke
+git diff --check
 ```
 
 CI additionally runs the race detector on Linux. The packaging command builds the native executable, checks its version, and parses the generated `.mcp.json`. When changing a Skill, also verify its frontmatter before submitting.

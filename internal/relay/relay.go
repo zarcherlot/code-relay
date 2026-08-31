@@ -2,25 +2,18 @@ package relay
 
 import (
 	"bufio"
-	"context"
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -32,6 +25,7 @@ const (
 
 var taskID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var commitSHA = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
+var receiptSHA = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 var branchRef = regexp.MustCompile(`^refs/heads/[A-Za-z0-9._/-]+$`)
 var atomicPathLocks [64]sync.Mutex
 
@@ -253,16 +247,7 @@ func runCommand(argv []string, cwd string, timeout int) (int, string, bool, erro
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = cwd
 	configureProcess(cmd)
-	env := os.Environ()
-	filtered := env[:0]
-	for _, e := range env {
-		key := strings.ToUpper(strings.SplitN(e, "=", 2)[0])
-		if sensitiveEnvKeys[key] {
-			continue
-		}
-		filtered = append(filtered, e)
-	}
-	cmd.Env = filtered
+	cmd.Env = filteredEnvironment(sensitiveEnvKeys)
 	output := newTailBuffer(maxOutputLength)
 	cmd.Stdout, cmd.Stderr = output, output
 	done := make(chan error, 1)
@@ -405,7 +390,7 @@ func writeAtomicFile(path string, data []byte) error {
 	if err := rejectSymlinkComponents(path); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := ensurePrivateDir(filepath.Dir(path)); err != nil {
 		return err
 	}
 	if err := rejectSymlinkComponents(filepath.Dir(path)); err != nil {
@@ -504,6 +489,20 @@ func validateReceipt(receipt Receipt, task Task) error {
 	}
 	if len(receipt.Checks) > 100 {
 		return errors.New("too many receipt checks")
+	}
+	if len(receipt.Risks) > 100 || len(receipt.NextActions) > 100 {
+		return errors.New("too many receipt risks or next actions")
+	}
+	if receipt.TaskSHA256 != "" && !receiptSHA.MatchString(receipt.TaskSHA256) {
+		return errors.New("invalid receipt task_sha256")
+	}
+	if len(receipt.VerifiedAt) > maxFieldLength {
+		return errors.New("receipt verified_at too long")
+	}
+	for _, item := range append(append([]string{}, receipt.Risks...), receipt.NextActions...) {
+		if len(item) > maxFieldLength {
+			return errors.New("receipt risk or next action too long")
+		}
 	}
 	for _, check := range receipt.Checks {
 		if check.Status != "passed" && check.Status != "failed" && check.Status != "blocked" {
@@ -659,6 +658,7 @@ func runGit(root string, timeoutSeconds int, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = root
 	configureProcess(cmd)
+	cmd.Env = gitEnvironment()
 	output := newTailBuffer(maxQueue)
 	cmd.Stdout, cmd.Stderr = output, output
 	done := make(chan error, 1)
@@ -689,161 +689,4 @@ func runGit(root string, timeoutSeconds int, args ...string) ([]byte, error) {
 		return nil, errors.New(redactSensitive(err.Error()))
 	}
 	return []byte(out), nil
-}
-
-func Daemon(root, role string, interval float64, addr string) error {
-	if role != "orchestrator" && role != "verifier" {
-		return errors.New("role must be orchestrator or verifier")
-	}
-	if interval < 1 || interval > 3600 {
-		return errors.New("poll interval must be 1..3600")
-	}
-	var err error
-	root, err = pathWithinRoot(root, root)
-	if err != nil {
-		return err
-	}
-	d := &daemon{root: root, role: role, requests: map[string][]time.Time{}}
-	stopWatcher := make(chan struct{})
-	if role == "verifier" {
-		go func() {
-			for {
-				select {
-				case <-stopWatcher:
-					return
-				default:
-					if err := syncTasks(root); err != nil {
-						fmt.Fprintln(os.Stderr, err)
-					}
-					time.Sleep(time.Duration(interval * float64(time.Second)))
-				}
-			}
-		}()
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", d.handle)
-	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	go func() { <-ctx.Done(); close(stopWatcher); _ = server.Shutdown(context.Background()) }()
-	fmt.Println("Code Relay daemon listening on", addr)
-	logEvent("daemon_started", map[string]any{"role": role, "addr": addr})
-	err = server.ListenAndServe()
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
-	return err
-}
-
-type daemon struct {
-	root, role string
-	mu         sync.Mutex
-	requests   map[string][]time.Time
-}
-
-func (d *daemon) allowRequest(client string) bool {
-	now := time.Now()
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	recent := d.requests[client][:0]
-	for _, stamp := range d.requests[client] {
-		if now.Sub(stamp) < time.Minute {
-			recent = append(recent, stamp)
-		}
-	}
-	if len(recent) >= 60 {
-		d.requests[client] = recent
-		return false
-	}
-	d.requests[client] = append(recent, now)
-	return true
-}
-
-func (d *daemon) handle(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.URL.Path != "/" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	client := r.RemoteAddr
-	if host, _, splitErr := net.SplitHostPort(r.RemoteAddr); splitErr == nil {
-		client = host
-	}
-	if !d.allowRequest(client) {
-		w.WriteHeader(http.StatusTooManyRequests)
-		return
-	}
-	contentType := strings.ToLower(strings.Split(r.Header.Get("Content-Type"), ";")[0])
-	if contentType != "application/json" {
-		w.WriteHeader(http.StatusUnsupportedMediaType)
-		return
-	}
-	if r.ContentLength > 1<<20 {
-		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, (1<<20)+1))
-	if err != nil {
-		w.WriteHeader(400)
-		return
-	}
-	if len(body) > 1<<20 {
-		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		return
-	}
-	var payload any
-	if err := json.Unmarshal(body, &payload); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	secret := os.Getenv("CODE_RELAY_WEBHOOK_SECRET")
-	if secret != "" {
-		sig := r.Header.Get("X-Hub-Signature-256")
-		mac := hmac.New(sha256.New, []byte(secret))
-		mac.Write(body)
-		want := "sha256=" + fmt.Sprintf("%x", mac.Sum(nil))
-		if !hmac.Equal([]byte(sig), []byte(want)) {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-	}
-	m, pathErr := projectPath(d.root, newMeta)
-	if pathErr != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	_ = os.MkdirAll(m, 0700)
-	delivery := r.Header.Get("X-GitHub-Delivery")
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if delivery != "" {
-		var deliveries []string
-		_ = readJSON(filepath.Join(m, "deliveries.json"), &deliveries)
-		for _, seen := range deliveries {
-			if seen == delivery {
-				w.WriteHeader(http.StatusAccepted)
-				return
-			}
-		}
-		deliveries = append(deliveries, delivery)
-		if len(deliveries) > 10000 {
-			deliveries = deliveries[len(deliveries)-10000:]
-		}
-		if err := atomicJSON(filepath.Join(m, "deliveries.json"), deliveries); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-	}
-	p := filepath.Join(m, "events.jsonl")
-	if info, e := os.Stat(p); e == nil && info.Size() >= maxQueue {
-		w.WriteHeader(http.StatusInsufficientStorage)
-		return
-	}
-	f, e := os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-	if e != nil {
-		w.WriteHeader(500)
-		return
-	}
-	defer f.Close()
-	_, _ = f.Write(append(body, '\n'))
-	w.WriteHeader(http.StatusAccepted)
 }

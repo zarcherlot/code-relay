@@ -2,6 +2,16 @@
 
 All notable changes to Code Relay are recorded here. The project is currently in the MVP stage.
 
+## [Unreleased]
+
+### Reliability and release engineering
+
+- Added contract validation for schemas, fixtures, plugin metadata, and MCP configuration.
+- Added cross-platform local end-to-end smoke coverage for passed and failed verification paths.
+- Added release artifact manifest/checksum verification and a repeatable release/rollback checklist.
+- Tightened Git child-process environment isolation, managed-directory permissions, daemon listener policy, and worktree pruning.
+- Added verifier operations runbook and CODEOWNERS governance.
+
 ## [2.0.0] - 2026-08-30
 
 ### Breaking

@@ -2,6 +2,10 @@
 
 The supported default verifier path is the repository's GitHub Actions workflow on a dedicated `codex-b` self-hosted runner. The service definitions below are optional compatibility examples for controlled deployments that deliberately choose the local `daemon` command; the plugin does not install or start them automatically.
 
+The daemon binds to `127.0.0.1` by default. Binding to any other address is
+rejected unless `CODE_RELAY_WEBHOOK_SECRET` is configured with at least 32
+characters; keep the listener behind a firewall even when authenticated.
+
 ## Linux
 
 Copy the matching `code-relay-agent-linux-*` binary to `/usr/local/bin/code-relay-agent`, create a dedicated `code-relay` user, and install `code-relay-agent.service` under `/etc/systemd/system/`. Set the project path and run:

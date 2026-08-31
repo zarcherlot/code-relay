@@ -110,6 +110,8 @@ The repository is dependency-light and requires Go 1.26+. CI and release builds 
 go test ./...
 go vet ./...
 go build ./cmd/code-relay-agent
+./scripts/validate-contracts.ps1
+./scripts/smoke-e2e.ps1
 ```
 
 CI additionally runs `go test -race ./...` on Linux, where the required C toolchain is controlled.
@@ -133,6 +135,9 @@ To build a plugin bundle with the platform-specific MCP executable and `.mcp.jso
 ```powershell
 ./scripts/package-plugin.ps1
 ```
+
+For release validation, use `RELEASE_CHECKLIST.md`; verifier installation and
+incident handling are documented in `deploy/RUNBOOK.md`.
 
 The source checkout `.mcp.json` uses `go run` so it works on every developer OS. A packaged plugin replaces it with a platform-native bundled binary and does not require Go at runtime.
 

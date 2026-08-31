@@ -108,6 +108,8 @@ internal/relay/*_test.go        # 单元、协议、并发和端到端测试
 go test ./...
 go vet ./...
 go build ./cmd/code-relay-agent
+./scripts/validate-contracts.ps1
+./scripts/smoke-e2e.ps1
 ```
 
 CI 还会在具备固定 C 工具链的 Linux 环境运行 `go test -race ./...`。
@@ -131,6 +133,9 @@ Go 运行时支持 Linux、macOS 和 Windows（macOS 同时提供 Intel 与 Appl
 ```powershell
 ./scripts/package-plugin.ps1
 ```
+
+发布验收请参照 `RELEASE_CHECKLIST.md`，验证机部署和故障处理请参照
+`deploy/RUNBOOK.md`。
 
 源码工作区的 `.mcp.json` 使用跨平台的 `go run`，方便开发者直接调试；插件包会替换为当前平台的原生二进制，普通用户运行时不需要安装 Go。
 

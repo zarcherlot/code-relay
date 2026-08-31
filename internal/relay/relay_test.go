@@ -2,7 +2,12 @@ package relay
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,6 +90,28 @@ func TestRemoteCredentialsAreRemoved(t *testing.T) {
 		if _, err := sanitizeRemote(unsafe); err == nil {
 			t.Fatalf("unsafe remote was accepted: %s", unsafe)
 		}
+	}
+}
+
+func TestGitEnvironmentRemovesRedirectAndSecretVariables(t *testing.T) {
+	t.Setenv("GIT_DIR", filepath.Join(t.TempDir(), "outside"))
+	t.Setenv("GIT_SSH_COMMAND", "ssh -o ProxyCommand=unsafe")
+	t.Setenv("GITHUB_TOKEN", "test-token")
+	env := gitEnvironment()
+	for _, entry := range env {
+		key := strings.ToUpper(strings.SplitN(entry, "=", 2)[0])
+		if restrictedGitEnvKeys[key] || sensitiveEnvKeys[key] {
+			t.Fatalf("restricted environment variable leaked: %s", key)
+		}
+	}
+	foundPrompt := false
+	for _, entry := range env {
+		if entry == "GIT_TERMINAL_PROMPT=0" {
+			foundPrompt = true
+		}
+	}
+	if !foundPrompt {
+		t.Fatal("git prompt prevention variable missing")
 	}
 }
 
@@ -195,6 +222,50 @@ func TestPolicyMatchesSharedDocument(t *testing.T) {
 		if !reflect.DeepEqual(actualDenied[command], values) {
 			t.Fatalf("denied argument mismatch for %s: got %#v want %#v", command, actualDenied[command], values)
 		}
+	}
+}
+
+func TestExamplesMatchRuntimeProtocol(t *testing.T) {
+	markdown, err := os.ReadFile(filepath.Join("..", "..", "examples", "task-001.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := parseTask(string(markdown))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var taskJSON struct {
+		ID     string `json:"task_id"`
+		Source string `json:"source_commit"`
+	}
+	if err := readJSON(filepath.Join("..", "..", "examples", "task-001.json"), &taskJSON); err != nil {
+		t.Fatal(err)
+	}
+	if task.ID != taskJSON.ID || task.SourceCommit != taskJSON.Source {
+		t.Fatalf("task fixtures disagree: markdown=%+v json=%+v", task, taskJSON)
+	}
+	var receipt Receipt
+	if err := readJSON(filepath.Join("..", "..", "examples", "receipt-001.json"), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateReceipt(receipt, task); err != nil {
+		t.Fatalf("receipt fixture is invalid: %v", err)
+	}
+}
+
+func TestReceiptBoundsAreEnforced(t *testing.T) {
+	task, err := parseTask(testTask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := Receipt{TaskID: task.ID, SourceCommit: task.SourceCommit, Status: "passed", Checks: []Check{}, Risks: make([]string, 101)}
+	if err := validateReceipt(receipt, task); err == nil {
+		t.Fatal("expected receipt risk bound rejection")
+	}
+	receipt.Risks = nil
+	receipt.TaskSHA256 = "not-a-sha"
+	if err := validateReceipt(receipt, task); err == nil {
+		t.Fatal("expected receipt task hash rejection")
 	}
 }
 
@@ -381,6 +452,71 @@ func TestMCPNotificationHasNoResponse(t *testing.T) {
 	}
 }
 
+func TestDaemonHTTPBoundaryChecks(t *testing.T) {
+	d := &daemon{root: t.TempDir(), role: "verifier", requests: map[string][]time.Time{}}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder := httptest.NewRecorder()
+	d.handle(recorder, request)
+	if recorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET status = %d, want %d", recorder.Code, http.StatusMethodNotAllowed)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}"))
+	request.Header.Set("Content-Type", "text/plain")
+	recorder = httptest.NewRecorder()
+	d.handle(recorder, request)
+	if recorder.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("content type status = %d, want %d", recorder.Code, http.StatusUnsupportedMediaType)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(strings.Repeat("x", (1<<20)+1)))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	d.handle(recorder, request)
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
+	}
+
+	secret := strings.Repeat("s", 32)
+	t.Setenv("CODE_RELAY_WEBHOOK_SECRET", secret)
+	body := []byte(`{"event":"push"}`)
+	request = httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	d.handle(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("missing signature status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(body)
+	request = httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Hub-Signature-256", "sha256="+fmt.Sprintf("%x", mac.Sum(nil)))
+	recorder = httptest.NewRecorder()
+	d.handle(recorder, request)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("valid signature status = %d, want %d", recorder.Code, http.StatusAccepted)
+	}
+}
+
+func TestDaemonAddressRequiresAuthenticationOffHost(t *testing.T) {
+	t.Setenv("CODE_RELAY_WEBHOOK_SECRET", "")
+	if err := validateDaemonAddress("0.0.0.0:8765"); err == nil {
+		t.Fatal("expected non-loopback daemon address to require a webhook secret")
+	}
+	t.Setenv("CODE_RELAY_WEBHOOK_SECRET", "short")
+	if err := validateDaemonAddress("0.0.0.0:8765"); err == nil {
+		t.Fatal("expected short webhook secret to be rejected")
+	}
+	t.Setenv("CODE_RELAY_WEBHOOK_SECRET", strings.Repeat("s", 32))
+	if err := validateDaemonAddress("0.0.0.0:8765"); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateDaemonAddress("127.0.0.1:8765"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestConcurrentAtomicWritesRemainValid(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state", "value.json")
 	var group sync.WaitGroup
@@ -456,6 +592,29 @@ func TestPublishRunFetchAnalyzeAndReprocessInvalidReceipt(t *testing.T) {
 	}
 }
 
+func TestPublishTaskDoesNotCreateEmptyCommit(t *testing.T) {
+	root := initTestRepository(t)
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	if out, err := exec.Command("git", "init", "--bare", remote).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v (%s)", err, out)
+	}
+	testGit(t, root, "remote", "add", "origin", remote)
+	testGit(t, root, "push", "--set-upstream", "origin", "HEAD")
+	commit := testGit(t, root, "rev-parse", "HEAD")
+	raw := strings.Replace(testTask, "abc1234", commit, 1)
+	if _, err := PublishTask(root, raw, false, false); err != nil {
+		t.Fatal(err)
+	}
+	first := testGit(t, root, "rev-parse", "HEAD")
+	if _, err := PublishTask(root, raw, false, false); err != nil {
+		t.Fatal(err)
+	}
+	second := testGit(t, root, "rev-parse", "HEAD")
+	if first != second {
+		t.Fatalf("identical task publication created a new commit: %s -> %s", first, second)
+	}
+}
+
 func assertPendingPassed(t *testing.T, root string) {
 	t.Helper()
 	results, err := RunPending(root, 30)
@@ -525,5 +684,13 @@ func FuzzParseTask(f *testing.F) {
 	f.Add("# Task\n- task_id: x\n")
 	f.Fuzz(func(t *testing.T, raw string) {
 		_, _ = parseTask(raw)
+	})
+}
+
+func FuzzParseCommand(f *testing.F) {
+	f.Add("go version")
+	f.Add("echo 'quoted value'")
+	f.Fuzz(func(t *testing.T, raw string) {
+		_, _ = parseCommand(raw)
 	})
 }

@@ -41,6 +41,11 @@ jobs:
           printf '{"bomFormat":"CycloneDX","specVersion":"1.5","version":1,"metadata":{"component":{"type":"application","name":"code-relay-agent","version":"%s"}},"components":[]}\n' "$version" > dist/sbom.cdx.json
           (cd dist && sha256sum * > SHA256SUMS)
           (cd dist && sha256sum -c SHA256SUMS)
+      - name: Verify release contract
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          ./scripts/verify-release.ps1 -Path dist -Version $version
       - name: Attest build provenance
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:

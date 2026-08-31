@@ -20,6 +20,19 @@ func validateTaskID(value string) error {
 	return nil
 }
 
+func ensurePrivateDir(path string) error {
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return err
+	}
+	// MkdirAll preserves permissions on an existing directory.  Tighten the
+	// mode on every managed directory so a previously permissive checkout does
+	// not silently expose bindings, tasks, receipts, or locks.
+	if err := os.Chmod(path, 0700); err != nil && !errors.Is(err, os.ErrPermission) {
+		return err
+	}
+	return nil
+}
+
 func pathWithinRoot(root, candidate string) (string, error) {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {

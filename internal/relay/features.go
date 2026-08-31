@@ -85,7 +85,7 @@ func BindProject(root, role, ref string) (map[string]any, error) {
 		if pathErr != nil {
 			return nil, pathErr
 		}
-		if err := os.MkdirAll(path, 0700); err != nil {
+		if err := ensurePrivateDir(path); err != nil {
 			return nil, err
 		}
 	}
@@ -266,7 +266,7 @@ func JoinVerifier(root, invite string) (map[string]any, error) {
 		if pathErr != nil {
 			return nil, pathErr
 		}
-		if err := os.MkdirAll(path, 0700); err != nil {
+		if err := ensurePrivateDir(path); err != nil {
 			return nil, err
 		}
 	}
@@ -323,8 +323,14 @@ func PublishTask(root, markdown string, force, noGit bool) (map[string]any, erro
 		if _, err := runGit(root, gitTimeout, "add", filepath.Join("tasks", task.ID, "task.md")); err != nil {
 			return nil, err
 		}
-		if _, err := runGit(root, gitTimeout, "commit", "-m", "code-relay: publish "+task.ID); err != nil && !strings.Contains(strings.ToLower(err.Error()), "nothing to commit") {
+		changed, err := stagedChanges(root, filepath.Join("tasks", task.ID, "task.md"))
+		if err != nil {
 			return nil, err
+		}
+		if changed {
+			if _, err := runGit(root, gitTimeout, "commit", "-m", "code-relay: publish "+task.ID); err != nil {
+				return nil, err
+			}
 		}
 		if _, err := runGit(root, gitTimeout, "push"); err != nil {
 			return nil, err
@@ -434,9 +440,16 @@ func RunPending(root string, timeout int) ([]map[string]any, error) {
 		if pathErr != nil {
 			return nil, pathErr
 		}
-		_ = runGitIgnore(root, "worktree", "remove", "--force", worktree)
-		if removeErr := os.RemoveAll(worktree); removeErr != nil {
-			return nil, removeErr
+		if err := ensurePrivateDir(filepath.Dir(worktree)); err != nil {
+			return nil, err
+		}
+		if cleanupErr := cleanupWorktree(root, worktree); cleanupErr != nil {
+			return nil, fmt.Errorf("清理旧 worktree 失败: %w", cleanupErr)
+		}
+		if _, statErr := os.Stat(worktree); statErr == nil {
+			if removeErr := os.RemoveAll(worktree); removeErr != nil {
+				return nil, removeErr
+			}
 		}
 		if _, addErr := runGit(root, gitTimeout, "worktree", "add", "--detach", worktree, task.SourceCommit); addErr != nil {
 			receipt := Receipt{TaskID: task.ID, SourceCommit: task.SourceCommit, Status: "blocked", Checks: []Check{{Name: "隔离 worktree", Expected: "可以检出 source_commit", Actual: addErr.Error(), Status: "blocked"}}, Risks: []string{"无法验证指定 source commit"}, NextActions: []string{"确认 source_commit 已推送且可访问"}, VerifiedAt: now(), Environment: map[string]string{"platform": "git"}, TaskSHA256: sha256Hex([]byte(task.Raw))}
@@ -452,8 +465,12 @@ func RunPending(root string, timeout int) ([]map[string]any, error) {
 		if runErr == nil {
 			runErr = PersistReceipt(root, receipt)
 		}
-		cleanupErr := runGitIgnore(root, "worktree", "remove", "--force", worktree)
-		row := map[string]any{"task_id": id, "status": receipt.Status}
+		cleanupErr := cleanupWorktree(root, worktree)
+		status := receipt.Status
+		if runErr != nil {
+			status = "error"
+		}
+		row := map[string]any{"task_id": id, "status": status}
 		if runErr != nil {
 			row["error"] = runErr.Error()
 		} else if cleanupErr != nil {
@@ -462,6 +479,18 @@ func RunPending(root string, timeout int) ([]map[string]any, error) {
 		results = append(results, row)
 	}
 	return results, nil
+}
+
+func cleanupWorktree(root, worktree string) error {
+	// Git may already have removed the worktree after an interrupted run. Keep
+	// that case idempotent, then prune stale administrative entries.
+	removeErr := runGitIgnore(root, "worktree", "remove", "--force", worktree)
+	if removeErr != nil {
+		if _, statErr := os.Stat(worktree); statErr == nil {
+			return removeErr
+		}
+	}
+	return runGitIgnore(root, "worktree", "prune")
 }
 
 func readTask(root, id string) (Task, error) {
@@ -484,6 +513,16 @@ func runGitIgnore(root string, args ...string) error {
 	return err
 }
 
+func stagedChanges(root string, paths ...string) (bool, error) {
+	args := []string{"diff", "--cached", "--name-only", "--"}
+	args = append(args, paths...)
+	out, err := runGit(root, gitTimeout, args...)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(out)) != "", nil
+}
+
 func PublishReceipts(root string) error {
 	root, err := pathWithinRoot(root, root)
 	if err != nil {
@@ -501,8 +540,14 @@ func PublishReceipts(root string) error {
 	if _, err := runGit(root, gitTimeout, "add", "receipts"); err != nil {
 		return err
 	}
-	if _, err := runGit(root, gitTimeout, "commit", "-m", "code-relay: publish verification receipts"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "nothing to commit") {
+	changed, err := stagedChanges(root, "receipts")
+	if err != nil {
 		return err
+	}
+	if changed {
+		if _, err := runGit(root, gitTimeout, "commit", "-m", "code-relay: publish verification receipts"); err != nil {
+			return err
+		}
 	}
 	_, err = runGit(root, gitTimeout, "push", "origin", "HEAD:"+ref)
 	return err

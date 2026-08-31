@@ -2,6 +2,7 @@ package relay
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 )
@@ -33,6 +34,17 @@ var sensitiveEnvKeys = map[string]bool{
 	"CODE_RELAY_WEBHOOK_SECRET": true, "CODEX_API_KEY": true, "OPENAI_API_KEY": true,
 }
 
+// These variables can redirect Git to another repository, config, transport,
+// or credential source.  They are intentionally removed from child Git
+// processes; the working tree and normal user SSH configuration remain usable.
+var restrictedGitEnvKeys = map[string]bool{
+	"GIT_DIR": true, "GIT_WORK_TREE": true, "GIT_INDEX_FILE": true,
+	"GIT_OBJECT_DIRECTORY": true, "GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
+	"GIT_CONFIG": true, "GIT_CONFIG_GLOBAL": true, "GIT_CONFIG_SYSTEM": true,
+	"GIT_CONFIG_COUNT": true, "GIT_SSH_COMMAND": true, "GIT_ASKPASS": true,
+	"GIT_EXEC_PATH": true, "GIT_CEILING_DIRECTORIES": true,
+}
+
 const (
 	maxCommandLength = 4096
 	maxFieldLength   = 8192
@@ -48,6 +60,35 @@ func containsShellOperator(value string) bool {
 		}
 	}
 	return false
+}
+
+func filteredEnvironment(blocked map[string]bool) []string {
+	env := os.Environ()
+	filtered := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		key := strings.ToUpper(strings.SplitN(entry, "=", 2)[0])
+		if blocked[key] {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func gitEnvironment() []string {
+	blocked := make(map[string]bool, len(sensitiveEnvKeys)+len(restrictedGitEnvKeys))
+	for key := range sensitiveEnvKeys {
+		blocked[key] = true
+	}
+	for key := range restrictedGitEnvKeys {
+		blocked[key] = true
+	}
+	env := filteredEnvironment(blocked)
+	// Git must never wait for an interactive credential prompt in Actions or
+	// a verifier service.  Explicit credentials configured by the caller still
+	// work through the normal Git credential helper or SSH agent.
+	env = append(env, "GIT_TERMINAL_PROMPT=0")
+	return env
 }
 
 func validateCommandArguments(name string, args []string) error {

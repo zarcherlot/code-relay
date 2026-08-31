@@ -64,6 +64,7 @@ try {
   Get-ChildItem -LiteralPath $outputRoot -File | Where-Object { $_.Name -ne "SHA256SUMS" } | Get-FileHash -Algorithm SHA256 | ForEach-Object {
     "$($_.Hash.ToLowerInvariant())  $($_.Path.Substring($outputRoot.Length + 1))"
   } | Set-Content -LiteralPath (Join-Path $outputRoot "SHA256SUMS") -Encoding ascii
+  & (Join-Path $root "scripts/verify-release.ps1") -Path $outputRoot -Version $Version
 }
 finally {
   $env:GOOS = $previousEnvironment.GOOS
