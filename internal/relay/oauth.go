@@ -281,7 +281,7 @@ func (s *OAuthService) setSession(w http.ResponseWriter, session OAuthSession) e
 }
 
 func (s *OAuthService) exchangeCode(ctx context.Context, code, verifier string) (string, error) {
-	form := url.Values{"client_id": []string{s.config.ClientID}, "client_secret": []string{s.config.ClientSecret}, "code": []string{code}, "redirect_uri": []string{s.config.RedirectURL}, "grant_type": []string{"authorization_code"}, "code_verifier": []string{verifier}}
+	form := url.Values{"client_id": []string{s.config.ClientID}, "client_secret": []string{s.config.ClientSecret}, "code": []string{code}, "redirect_uri": []string{s.config.RedirectURL}, "code_verifier": []string{verifier}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.config.GitHubOAuthURL, "/")+"/login/oauth/access_token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", err
@@ -300,7 +300,13 @@ func (s *OAuthService) exchangeCode(ctx context.Context, code, verifier string) 
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&token); err != nil {
 		return "", err
 	}
-	if token.AccessToken == "" || token.Error != "" {
+	if token.Error != "" {
+		if token.ErrorDesc != "" {
+			return "", fmt.Errorf("oauth provider error %s: %s", token.Error, token.ErrorDesc)
+		}
+		return "", fmt.Errorf("oauth provider error: %s", token.Error)
+	}
+	if token.AccessToken == "" {
 		return "", errors.New("oauth provider returned no access token")
 	}
 	return token.AccessToken, nil

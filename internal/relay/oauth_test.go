@@ -13,6 +13,12 @@ func TestOAuthPKCEAndEncryptedSession(t *testing.T) {
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/login/oauth/access_token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			if r.Form.Get("grant_type") != "" || r.Form.Get("code_verifier") == "" {
+				t.Fatalf("unexpected OAuth exchange form: %v", r.Form)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "oauth-secret-token", "token_type": "bearer"})
 		case "/user":
 			if r.Header.Get("Authorization") != "Bearer oauth-secret-token" {
