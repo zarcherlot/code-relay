@@ -7,7 +7,10 @@
   <a href="README.md">English</a> · <a href="README.zh-CN.md">中文版</a>
 </p>
 
-<p align="center"><sub>build, verify, and relay</sub></p>
+<h2 align="center">
+  Build. Prove. Relay.<br>
+  构建，验证，接力。
+</h2>
 
 <p align="center">
   <img src="assets/overview.png" alt="Code Relay 工作流" width="836">
