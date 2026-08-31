@@ -247,7 +247,17 @@ func (h *mcpHTTPHandler) home(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = io.WriteString(w, "Code Relay MCP gateway is running.\nUse /auth/github to sign in or /healthz to check status.\n")
+	message := "Code Relay MCP gateway is running.\n"
+	if h.config.OAuth == nil {
+		message += "Use /healthz to check status.\n"
+	} else if session, err := h.config.OAuth.Authenticate(r); err != nil {
+		message += "OAuth session: not authenticated. Use /auth/github to sign in.\n"
+	} else if session.InstallationID <= 0 {
+		message += "OAuth session: authenticated. GitHub App installation: not bound. Use /auth/github/install.\n"
+	} else {
+		message += "OAuth session: authenticated. GitHub App installation: bound.\n"
+	}
+	_, _ = io.WriteString(w, message)
 }
 
 func (h *mcpHTTPHandler) authorized(r *http.Request) bool {
