@@ -122,6 +122,14 @@ $redisContractText = Get-Content -LiteralPath $redisContract -Raw
 foreach ($fragment in @("session:", "session-events:", "XREAD BLOCK", "XTRIM MINID", "Last-Event-ID", "Pub/Sub is not a durability mechanism")) {
   if ($redisContractText -notmatch [regex]::Escape($fragment)) { throw "Redis contract is missing $fragment" }
 }
+$compose = Join-Path $root "deploy/docker-compose.saas.yml"
+if (-not (Test-Path -LiteralPath $compose -PathType Leaf)) { throw "Missing SaaS Docker Compose definition" }
+$composeText = Get-Content -LiteralPath $compose -Raw
+foreach ($fragment in @("postgres:", "redis:", "CODE_RELAY_SESSION_STORE: redis", "./migrations:/docker-entrypoint-initdb.d:ro")) {
+  if ($composeText -notmatch [regex]::Escape($fragment)) { throw "Docker Compose definition is missing $fragment" }
+}
+$dockerfileText = Get-Content -LiteralPath (Join-Path $root "Dockerfile") -Raw
+if ($dockerfileText -notmatch "COPY go\.mod go\.sum") { throw "Dockerfile must copy go.sum for reproducible dependency builds" }
 $checkpointWorkflowPath = Join-Path $root ".github/workflows/checkpoint.yml"
 if (-not (Test-Path -LiteralPath $checkpointWorkflowPath -PathType Leaf)) { throw "Missing checkpoint workflow" }
 $checkpointWorkflow = Get-Content -LiteralPath $checkpointWorkflowPath -Raw

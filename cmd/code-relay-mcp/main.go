@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/zarcherlot/code-relay/internal/relay"
 )
 
@@ -108,6 +109,29 @@ func main() {
 		// running more than one gateway instance.
 		if strings.EqualFold(envOr("CODE_RELAY_SESSION_STORE", "memory"), "memory") {
 			oauthConfig.SessionStore = relay.NewMemorySessionStore()
+		} else if strings.EqualFold(envOr("CODE_RELAY_SESSION_STORE", "memory"), "redis") {
+			redisURL := strings.TrimSpace(os.Getenv("CODE_RELAY_REDIS_URL"))
+			options, parseErr := redis.ParseURL(redisURL)
+			if parseErr != nil {
+				fatal("parse CODE_RELAY_REDIS_URL: %v", parseErr)
+			}
+			redisClient := redis.NewClient(options)
+			pingCtx, cancelPing := context.WithTimeout(context.Background(), 5*time.Second)
+			pingErr := redisClient.Ping(pingCtx).Err()
+			cancelPing()
+			if pingErr != nil {
+				_ = redisClient.Close()
+				fatal("connect to Redis: %v", pingErr)
+			}
+			store, storeErr := relay.NewRedisSessionStoreWithSecret(redisClient, os.Getenv("CODE_RELAY_REDIS_KEY_PREFIX"), os.Getenv("CODE_RELAY_SESSION_SECRET"))
+			if storeErr != nil {
+				_ = redisClient.Close()
+				fatal("configure Redis session store: %v", storeErr)
+			}
+			oauthConfig.SessionStore = store
+			defer redisClient.Close()
+		} else if !strings.EqualFold(envOr("CODE_RELAY_SESSION_STORE", "memory"), "cookie") {
+			fatal("CODE_RELAY_SESSION_STORE must be memory, redis, or cookie")
 		}
 		oauth, oauthErr := relay.NewOAuthService(oauthConfig)
 		if oauthErr != nil {

@@ -65,6 +65,8 @@ workflow dispatches, and receipts. Do not use process-local state when more
 than one gateway instance is deployed.
 The initial PostgreSQL tables are defined in `deploy/migrations/001_control_plane.sql`;
 Redis key/stream semantics are specified in `deploy/REDIS-CONTRACT.md`.
+`deploy/docker-compose.saas.yml` provides a local PostgreSQL/Redis/gateway
+integration environment; do not use its development credentials in production.
 Set `CODE_RELAY_ALLOWED_REFS` when the hosted deployment should limit users to
 an explicit branch allowlist (for example `owner/repo@refs/heads/main`).
 

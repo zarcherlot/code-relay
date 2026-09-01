@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: code_relay
+      POSTGRES_USER: code_relay
+      POSTGRES_PASSWORD: local-development-only
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U code_relay -d code_relay"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ./remote-mcp.env
+    environment:
+      CODE_RELAY_DATABASE_URL: postgres://code_relay:local-development-only@postgres:5432/code_relay?sslmode=disable
+      CODE_RELAY_REDIS_URL: redis://redis:6379/0
+      CODE_RELAY_SESSION_STORE: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres-data:
+  redis-data:
