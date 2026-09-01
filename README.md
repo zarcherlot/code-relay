@@ -38,15 +38,11 @@ MCP-capable coding agents.
 
 ### AI client installation
 
-Open the [AI-client installation guide](install.md) in your coding agent and
-ask it to follow the instructions. To copy the stable guide URL:
+Let your coding agent read and follow the instructions:
 
 ```text
 https://raw.githubusercontent.com/zarcherlot/code-relay/main/install.md
 ```
-
-The guide previews changes, asks for confirmation, preserves existing MCP
-servers, and pins the installed version.
 
 ### npm fallback
 
@@ -55,8 +51,6 @@ npx -y code-relay-mcp@latest install --client codex
 ```
 
 Replace `codex` with `claude-code`, `cursor`, `vscode`, or `generic` as needed.
-Node.js 18+ is required. For client options and recovery steps, see
-[install.md](install.md).
 
 ## How it works
 
@@ -64,7 +58,7 @@ Node.js 18+ is required. For client options and recovery steps, see
   <img src="assets/overview.png" alt="Dev Host sends a runbook through Code Relay to a Target Host; the Target Host runs a checkpoint and returns a receipt with evidence" width="836">
 </p>
 
-Accessible summary: the Dev Host sends a repository- and branch-bound runbook
+the Dev Host sends a repository- and branch-bound runbook
 through Relay; the Target Host checks the exact source commit in its real
 environment and returns a Receipt recording the Checkpoint result.
 

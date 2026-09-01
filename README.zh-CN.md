@@ -11,19 +11,19 @@
   构建，验证，接力。
 </h2>
 
-> **Code Relay 让编码代理在一台机器上开发，在另一台机器上证明结果。**
+> **Code Relay 让Agent在一台机器上开发，在另一台机器上证明结果。**
 
-Relay 是基于 MCP 的跨机器开发验证工具。开发机上的人工智能负责实现需求，
-目标机上的验证环境负责执行真实测试，结构化回执会返回给编码代理，
+Relay 是基于 MCP 的跨机器开发验证工具。开发机上的agent负责实现需求，
+目标机上的验证环境负责执行真实测试，将结构化回执返回给开发机，
 推动下一轮修复。它支持 Codex、Claude Code、Cursor、VS Code 以及其他
-支持 MCP 的编码代理。
+支持 MCP 的coding agents。
 
 ## 什么时候需要 Relay
 
 - **环境不同**：在 Windows 或 macOS 开发，在 Linux、内网或生产同构环境验证。
 - **需要特殊硬件**：把模型代码交给 CUDA/GPU 机器，或在连接摄像头、串口设备、传感器的机器上验证。
 - **需要真实依赖**：验证支付回调、队列、数据库、浏览器或本地无法复现的内部服务。
-- **需要 AI 持续迭代**：回传具体的预期与实际结果，让编码代理修复、重新发布并再次验证。
+- **需要 AI 持续迭代**：回传具体的预期与实际结果，让agent修复、重新发布并再次验证。
 
 ## Relay 提供什么
 
@@ -37,23 +37,19 @@ Relay 是基于 MCP 的跨机器开发验证工具。开发机上的人工智能
 
 ### AI 客户端安装
 
-在编码代理中打开[AI 客户端安装指南](install.md)，让它按指南执行。需要复制
-稳定的指南地址时，复制下面的链接：
+Agent阅读[AI 客户端安装指南](install.md)：
 
 ```text
 https://raw.githubusercontent.com/zarcherlot/code-relay/main/install.md
 ```
 
-指南会先预览改动并请求确认，保留已有 MCP 服务，并固定安装版本。
-
-### npm 备用安装
+### npm 安装
 
 ```sh
 npx -y code-relay-mcp@latest install --client codex
 ```
 
-按客户端替换为 `claude-code`、`cursor`、`vscode` 或 `generic`。需要 Node.js
-18+；客户端选项和故障恢复见 [install.md](install.md)。
+按客户端替换为 `claude-code`、`cursor`、`vscode` 或 `generic`。
 
 ## 工作原理
 
@@ -61,7 +57,7 @@ npx -y code-relay-mcp@latest install --client codex
   <img src="assets/overview.png" alt="开发机通过 Code Relay 向目标机发送 runbook；目标机执行 Checkpoint 并返回带证据的 Receipt" width="836">
 </p>
 
-无障碍文字说明：开发机通过 Relay 发送绑定仓库和分支的 runbook；目标机在
+开发机通过 Relay 发送绑定仓库和分支的 runbook；目标机在
 真实环境中检查准确的源提交，并返回记录 Checkpoint 结果的 Receipt。
 
 每份 runbook 都绑定仓库、分支和源提交。目标机作为 Checkpoint，
