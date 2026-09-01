@@ -2,12 +2,12 @@
 
 ## 发布决策
 
-Code Relay 采用 Go-only runtime。Codex Plugin 通过 `code-relay-agent mcp-stdio` 调用 Go MCP；GitHub Actions 负责调度 Checkpoint Host 的 self-hosted runner；Go agent 负责协议、隔离执行和回执。Relay 不再依赖 Python、pip 或自研 Checkpoint 端轮询服务。
+Code Relay 采用 Go-only runtime。ChatGPT/Codex 插件或其他 MCP 客户端通过 `code-relay-agent mcp-stdio` 调用 Go MCP；GitHub Actions 负责调度 Checkpoint Host 的 self-hosted runner；Go agent 负责协议、隔离执行和回执。Relay 不再依赖 Python、pip 或自研 Checkpoint 端轮询服务。
 
 ## 目标架构
 
 ```text
-Codex Plugin
+ChatGPT/Codex Plugin or MCP client
     ↓ MCP stdio
 code-relay-agent (Go)
     ├─ binding / invite / join
@@ -73,7 +73,7 @@ code-relay-agent (Go)
 
 ## 完成标准
 
-从 A Codex 输入需求开始，可以完成：
+从 Dev Host 的 coding agent 输入需求开始，可以完成：
 
 ```text
 开发 → 合入 → publish runbook → GitHub Actions 调度 Checkpoint

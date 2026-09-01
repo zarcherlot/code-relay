@@ -23,7 +23,8 @@ import (
 
 const (
 	bindingSchemaVersion = 2
-	inviteVersion        = 2
+	inviteVersion        = 3
+	inviteMode           = "mcp"
 )
 
 var inviteNonce = regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`)
@@ -136,7 +137,7 @@ func CreateInvite(root string, expiresMinutes int, oneTime bool) (map[string]any
 		return nil, errors.New("绑定配置非法")
 	}
 	nonce := randomToken(18)
-	payload := map[string]any{"v": inviteVersion, "repository": repository, "ref": ref, "runbook_path": "runbooks/**", "mode": "codex", "nonce": nonce, "one_time": oneTime, "expires_at": time.Now().UTC().Add(time.Duration(expiresMinutes) * time.Minute).Truncate(time.Second).Format(time.RFC3339)}
+	payload := map[string]any{"v": inviteVersion, "repository": repository, "ref": ref, "runbook_path": "runbooks/**", "mode": inviteMode, "nonce": nonce, "one_time": oneTime, "expires_at": time.Now().UTC().Add(time.Duration(expiresMinutes) * time.Minute).Truncate(time.Second).Format(time.RFC3339)}
 	if secret := os.Getenv("CODE_RELAY_INVITE_SECRET"); secret != "" {
 		if len(secret) < 32 {
 			return nil, errors.New("CODE_RELAY_INVITE_SECRET 至少需要 32 个字符")
@@ -178,7 +179,7 @@ func DecodeInvite(value string) (map[string]any, error) {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, errors.New("无效的 Code Relay 加入链接")
 	}
-	if payload["v"] != float64(inviteVersion) || payload["mode"] != "codex" {
+	if payload["v"] != float64(inviteVersion) || payload["mode"] != inviteMode {
 		return nil, errors.New("加入链接缺少必要绑定信息")
 	}
 	ref, _ := payload["ref"].(string)
@@ -231,7 +232,7 @@ func JoinCheckpoint(root, invite string) (map[string]any, error) {
 	if err != nil || ref != payload["ref"] {
 		return nil, errors.New("当前工程分支不匹配")
 	}
-	config := map[string]any{"schema_version": bindingSchemaVersion, "checkpoint_id": "checkpoint-" + randomToken(4), "repository": payload["repository"], "ref": payload["ref"], "runbook_path": "runbooks/**", "mode": "codex", "runtime": "go", "joined_at": now()}
+	config := map[string]any{"schema_version": bindingSchemaVersion, "checkpoint_id": "checkpoint-" + randomToken(4), "repository": payload["repository"], "ref": payload["ref"], "runbook_path": "runbooks/**", "mode": inviteMode, "runtime": "go", "joined_at": now()}
 	// Serialize the consumed-invite read/check/write sequence so a one-time
 	// nonce cannot be accepted by two concurrent join requests.
 	inviteLock, lockErr := acquireRunbookLock(root, "invite-consumption", 10*time.Second)

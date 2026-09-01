@@ -16,14 +16,14 @@
   <img src="assets/overview.png" alt="Code Relay workflow" width="836">
 </p>
 
-> **Code Relay lets Codex develop on one machine and prove the result on another.**
+> **Code Relay lets your coding agent develop on one machine and prove the result on another.**
 
-Relay is a Codex plugin for cross-machine development and verification. AI on the **Dev Host** implements the request; the **Target Host** runs the real validation; a structured receipt comes back and can trigger the next repair iteration.
+Relay is an MCP-based coding-agent integration for cross-machine development and verification. It is optimized for the ChatGPT/Codex plugin surface, while the same MCP server also works with Claude Code, Cursor, VS Code, and other MCP-capable coding agents. AI on the **Dev Host** implements the request; the **Target Host** runs the real validation; a structured receipt comes back and can trigger the next repair iteration.
 
 ## How it works
 
 ```text
-Describe the change in Codex
+Describe the change in your coding agent
         ↓
 Dev Host → Relay runbook → Target Host
         ↓                 ↓
@@ -38,23 +38,23 @@ Relay binds every runbook to a repository, branch, and source commit. The Target
 - **Different environments** — develop on Windows or macOS, verify on Linux, a private network, or a production-like host.
 - **Special hardware** — send model code to a CUDA/GPU machine, or verify a camera, serial device, or sensor where it is connected.
 - **Real integrations** — exercise payment callbacks, queues, databases, browsers, or internal services that cannot be reproduced locally.
-- **AI-driven iteration** — return concrete expected/actual results so Codex can repair, republish, and retry.
+- **AI-driven iteration** — return concrete expected/actual results so the coding agent can repair, republish, and retry.
 
 ## Quick start
 
-1. Install **Code Relay** from the Codex plugin UI.
+1. Install **Code Relay** from the ChatGPT/Codex plugin UI, or configure the MCP server in another coding agent.
 2. On the Dev Host, open a project and say:
 
    > Enable Code Relay for the current project and branch, then generate a Target Host join link.
 
-3. On the Target Host, install the same plugin and paste the link into Codex.
+3. On the Target Host, install the same plugin or MCP server and paste the link into the coding agent.
 4. The Target Host joins the approved repository and branch as its checkpoint, executes runbooks on the `code-relay-checkpoint` GitHub Actions runner, and publishes a receipt.
 
 Users do not need to install Python, Go, or a separate Relay runtime for the packaged plugin. See [USER_GUIDE.md](USER_GUIDE.md) for the complete journey and recovery steps.
 
 ### Install through npm (any MCP client)
 
-Code Relay is also distributed as `code-relay-mcp`. An AI client can follow
+Code Relay is also distributed as `code-relay-mcp`. Any MCP-capable coding agent can follow
 [install.md](install.md), or you can preview and apply the client-specific
 installer directly:
 
@@ -73,9 +73,9 @@ code-relay-mcp install --client codex --yes
 Replace `codex` with `claude-code`, `cursor`, `vscode`, or `generic` as needed.
 Node.js 18+ is required. The npm launcher downloads the matching native release
 binary on first use, verifies it against `SHA256SUMS`, and caches it locally; Go
-is not required. The npm distribution exposes the MCP tools, while the Codex
-plugin additionally supplies the `$code-relay:relay` and
-`$code-relay:checkpoint` Skills.
+is not required. The npm distribution exposes the MCP tools. The ChatGPT/Codex
+plugin package additionally supplies the `$code-relay:relay` and
+`$code-relay:checkpoint` Skills; other clients can use the same MCP tools directly.
 
 ### Install from this repository (local desktop)
 
@@ -123,7 +123,7 @@ npm run verify
 ./scripts/smoke-e2e.ps1
 ```
 
-Build the bundled agent for the current platform with `./scripts/build-agent.ps1`. The CLI is a developer/CI fallback; normal users install through Codex.
+Build the bundled agent for the current platform with `./scripts/build-agent.ps1`. The CLI is a developer/CI fallback; normal users install through their coding agent's MCP/plugin mechanism.
 
 ## Documentation
 

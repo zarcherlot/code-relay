@@ -1,6 +1,6 @@
 # Contributing to Code Relay
 
-Thanks for helping improve Code Relay. The project is intentionally small: changes should preserve the branch-scoped protocol and keep the Codex conversation as the primary user interface.
+Thanks for helping improve Code Relay. The project is intentionally small: changes should preserve the branch-scoped protocol and keep the coding-agent conversation as the primary user interface.
 
 ## Before opening a change
 

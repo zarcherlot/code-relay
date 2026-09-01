@@ -19,6 +19,8 @@ All notable changes to Code Relay are recorded here. The project is currently in
 
 - Renamed the GitHub Actions checkpoint runner label from `codex-b` to
   `code-relay-checkpoint`; existing runners must be relabelled before upgrading.
+- Generalized invitation protocol metadata from the Codex-specific `mode` value
+  to the client-neutral `mcp` value; existing v2 invitations must be recreated.
 
 ## [3.0.0] - 2026-08-31
 

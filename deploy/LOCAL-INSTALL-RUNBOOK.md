@@ -1,8 +1,9 @@
 # Code Relay 本机安装运行手册
 
-本手册用于把本仓库中的 Code Relay 安装到 ChatGPT 桌面版。它只覆盖本机
-插件安装，不包含 Target Host、GitHub Actions runner 或远端 MCP Gateway 的
-部署。
+本手册用于把本仓库中的 Code Relay 安装到 ChatGPT 桌面版。ChatGPT/Codex
+是当前优先适配的插件入口；其他 coding agent 可直接使用同一 MCP 服务，参阅
+[npm/MCP 安装说明](../install.md)。本手册只覆盖本机插件安装，不包含 Target
+Host、GitHub Actions runner 或远端 MCP Gateway 的部署。
 
 ## 安装目标
 

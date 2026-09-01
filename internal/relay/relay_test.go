@@ -296,7 +296,7 @@ func TestInviteRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if payload["v"] != float64(inviteVersion) || payload["repository"] != "https://github.com/example/relay" || payload["ref"] != "refs/heads/main" {
+	if payload["v"] != float64(inviteVersion) || payload["mode"] != inviteMode || payload["repository"] != "https://github.com/example/relay" || payload["ref"] != "refs/heads/main" {
 		t.Fatalf("unexpected invite: %#v", payload)
 	}
 }
@@ -307,7 +307,7 @@ func TestLegacyTaskInviteIsRejected(t *testing.T) {
 		"repository": "https://github.com/example/relay",
 		"ref":        "refs/heads/main",
 		"task_path":  "tasks/**",
-		"mode":       "codex",
+		"mode":       "legacy",
 		"nonce":      "legacy-invite-token",
 		"expires_at": time.Now().UTC().Add(time.Hour).Format(time.RFC3339),
 	}

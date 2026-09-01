@@ -5,6 +5,11 @@ guide before changing configuration. Code Relay runs through npm and downloads
 the matching versioned release artifact from GitHub; the launcher verifies the
 artifact against the release `SHA256SUMS` before executing it.
 
+Code Relay is an MCP server for any MCP-capable coding agent. Codex is a
+first-class integration target because of the ChatGPT/Codex plugin surface, but
+Claude Code, Cursor, VS Code, and clients using a generic MCP configuration are
+supported through the same installer.
+
 ## Safety contract
 
 1. Explain that installation adds one local MCP server named `code-relay` and

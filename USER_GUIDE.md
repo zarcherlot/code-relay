@@ -1,6 +1,6 @@
 # Code Relay 用户使用指南
 
-Code Relay 适合这样的工作方式：你只在 Dev Host 的 Codex 中描述需求，Dev Host 负责开发并发布 runbook，Checkpoint Host 在目标环境验证，最后把结构化 Receipt 交回 Dev Host。
+Code Relay 适合这样的工作方式：你只在 Dev Host 的 coding agent 中描述需求，Dev Host 负责开发并发布 runbook，Checkpoint Host 在目标环境验证，最后把结构化 Receipt 交回 Dev Host。ChatGPT/Codex 是优先适配的插件入口，但任何支持 MCP 的 coding agent 都可以使用 Relay。
 
 ## 1. 你会看到什么
 
@@ -15,14 +15,15 @@ Code Relay 适合这样的工作方式：你只在 Dev Host 的 Codex 中描述�
 ```text
 runbooks/<runbook_id>/runbook.md        # A 发给 Checkpoint 的验证运行手册
 receipts/<runbook_id>/receipt.json      # Checkpoint 给程序读取的结构化结果
-receipts/<runbook_id>/receipt.md        # Checkpoint 给人和 Codex 阅读的结果
+receipts/<runbook_id>/receipt.md        # Checkpoint 给人和 coding agent 阅读的结果
 ```
 
 你不需要手工维护数据库，也不需要打开 Web 控制台查看状态。
 
 ## 2. 一次性准备
 
-普通用户可以直接从 Codex 插件入口安装 **Code Relay**。如果使用本仓库进行
+普通用户可以直接从 ChatGPT/Codex 插件入口安装 **Code Relay**，也可以在其他
+支持 MCP 的 coding agent 中配置 `code-relay-mcp`。如果使用本仓库进行
 桌面版本地安装，请先完成下面的打包步骤；打包后的插件直接启动原生 Go
 `code-relay-agent`，运行时不需要安装 Python、Go 或其他语言运行时。
 
@@ -52,26 +53,27 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
 
 ### 通过 npm 接入其他 AI 客户端
 
-如果客户端支持 MCP 但不使用 Codex 插件目录，可以让客户端读取
+如果客户端支持 MCP 但不使用 ChatGPT/Codex 插件目录，可以让客户端读取
 [install.md](install.md)，或直接运行：
 
 ```sh
 npx -y code-relay-mcp@latest install --client generic
 ```
 
-安装器支持 `codex`、`claude-code`、`cursor`、`vscode` 和 `generic`。先不带
+安装器支持 `codex`、`claude-code`、`cursor`、`vscode` 和 `generic`；`codex` 只是其中
+一个客户端目标。先不带
 `--yes` 预览变更，获得用户确认后再应用。npm 路径需要 Node.js 18+，但不需要
 Go；第一次真正启动 MCP 时会下载并校验对应平台的原生 agent。npm 安装只提供
-MCP 工具，Codex 插件安装还会提供 `$code-relay:relay` 和
-`$code-relay:checkpoint` Skill。
+MCP 工具；ChatGPT/Codex 插件安装还会提供 `$code-relay:relay` 和
+`$code-relay:checkpoint` Skill，其他客户端直接使用 MCP 工具。
 
 ### A 主机（Relay 端）
 
-安装插件后，在目标工程目录的 Codex 中说：“为当前工程当前分支启用 Code Relay”。插件会读取 Git remote 和当前分支，生成项目配置、workflow、runbook/Receipt 目录，提交并推送。
+安装插件或配置 MCP 后，在目标工程目录的 coding agent 中说：“为当前工程当前分支启用 Code Relay”。插件会读取 Git remote 和当前分支，生成项目配置、workflow、runbook/Receipt 目录，提交并推送。
 
 ### Checkpoint Host（验证端）
 
-Checkpoint 用户安装同一个 Code Relay 插件，把 Dev Host 生成的加入链接粘贴到该工程的 Codex 中，并确认仓库、分支和权限。插件生成 Checkpoint 配置；随后在同一仓库注册带 `code-relay-checkpoint` 标签的 GitHub Actions self-hosted runner。runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
+Checkpoint 用户安装同一个 Code Relay 插件，把 Dev Host 生成的加入链接粘贴到该工程的 coding agent 中，并确认仓库、分支和权限。插件生成 Checkpoint 配置；随后在同一仓库注册带 `code-relay-checkpoint` 标签的 GitHub Actions self-hosted runner。runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
 
 排查主机环境时运行：
 
@@ -85,7 +87,7 @@ code-relay-agent doctor --root .
 
 ### 第一步：完成开发并合入
 
-在 A 的 Codex 中描述业务目标，例如：
+在 Dev Host 的 coding agent 中描述业务目标，例如：
 
 > 完成支付回调幂等改造，提交并合入；合入后让 Checkpoint 验证，失败时继续修复。
 
@@ -103,7 +105,7 @@ code-relay-agent doctor --root .
 
 ### 第三步：查看状态
 
-直接在 Codex 中询问：“查看当前 Relay 状态”或“查看 runbook-001 的验证结果”。插件会调用内部状态工具。
+直接在 coding agent 中询问：“查看当前 Relay 状态”或“查看 runbook-001 的验证结果”。插件会调用内部状态工具。
 
 常见状态含义：
 
@@ -113,7 +115,7 @@ code-relay-agent doctor --root .
 - `blocked`：runbook 缺少可执行命令，或命令被安全策略拦截
 - `invalid`：runbook 或 Receipt 格式错误，需要先修复协议问题
 
-插件会自动监听回执。需要时可以在 Codex 中说：“读取 runbook-001 回执并给出下一步”。
+插件会自动监听回执。需要时可以在 coding agent 中说：“读取 runbook-001 回执并给出下一步”。
 
 `analyze` 有三种结论：
 
@@ -121,7 +123,7 @@ code-relay-agent doctor --root .
 - `iterate`：展示失败检查，修复代码后发布下一版 runbook，例如 `runbook-002`
 - `blocked`：停止自动修改，先让用户决定如何处理
 
-CLI 会以结构化 JSON 返回 `done`、`iterate` 或 `blocked` 结论，供 Codex 或脚本读取。
+CLI 会以结构化 JSON 返回 `done`、`iterate` 或 `blocked` 结论，供 coding agent 或脚本读取。
 
 ## 4. Checkpoint 如何验证
 

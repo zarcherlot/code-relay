@@ -10,6 +10,8 @@
   "repository": "https://github.com/zarcherlot/code-relay",
   "license": "MIT",
   "keywords": [
+    "mcp",
+    "coding-agent",
     "codex",
     "verification",
     "github",
@@ -19,7 +21,7 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Code Relay",
-    "shortDescription": "Connect a Codex project to a remote verification branch.",
+    "shortDescription": "Connect a coding project to a remote verification branch.",
     "longDescription": "Code Relay binds the current project and branch, lets the Dev Host orchestrate development, and lets the Checkpoint Host verify pushed runbooks and publish receipts.",
     "developerName": "Code Relay",
     "category": "Developer Tools",
