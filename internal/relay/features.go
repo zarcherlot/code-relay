@@ -231,7 +231,7 @@ func JoinCheckpoint(root, invite string) (map[string]any, error) {
 	if err != nil || ref != payload["ref"] {
 		return nil, errors.New("当前工程分支不匹配")
 	}
-	config := map[string]any{"schema_version": bindingSchemaVersion, "checkpoint_id": "b-" + randomToken(4), "repository": payload["repository"], "ref": payload["ref"], "runbook_path": "runbooks/**", "mode": "codex", "runtime": "go", "joined_at": now()}
+	config := map[string]any{"schema_version": bindingSchemaVersion, "checkpoint_id": "checkpoint-" + randomToken(4), "repository": payload["repository"], "ref": payload["ref"], "runbook_path": "runbooks/**", "mode": "codex", "runtime": "go", "joined_at": now()}
 	// Serialize the consumed-invite read/check/write sequence so a one-time
 	// nonce cannot be accepted by two concurrent join requests.
 	inviteLock, lockErr := acquireRunbookLock(root, "invite-consumption", 10*time.Second)

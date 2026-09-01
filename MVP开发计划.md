@@ -2,7 +2,7 @@
 
 ## 发布决策
 
-Code Relay 采用 Go-only runtime。Codex Plugin 通过 `code-relay-agent mcp-stdio` 调用 Go MCP；GitHub Actions 负责调度目标机 self-hosted runner；Go agent 负责协议、隔离执行和回执。Relay 不再依赖 Python、pip 或自研 B 端轮询服务。
+Code Relay 采用 Go-only runtime。Codex Plugin 通过 `code-relay-agent mcp-stdio` 调用 Go MCP；GitHub Actions 负责调度 Checkpoint Host 的 self-hosted runner；Go agent 负责协议、隔离执行和回执。Relay 不再依赖 Python、pip 或自研 Checkpoint 端轮询服务。
 
 ## 目标架构
 
@@ -15,7 +15,7 @@ code-relay-agent (Go)
     ├─ publish / status / analyze
     └─ bounded runner
              ↓ GitHub Actions
-       codex-b self-hosted runner
+       code-relay-checkpoint self-hosted runner
 ```
 
 ## 阶段 1：Go 协议和 MCP
@@ -37,7 +37,7 @@ code-relay-agent (Go)
 
 ## 阶段 3：GitHub Actions 集成
 
-- B 主机使用带 `codex-b` 标签的 self-hosted runner。
+- Checkpoint Host 使用带 `code-relay-checkpoint` 标签的 self-hosted runner。
 - workflow 由 Go `run-pending` 执行 runbook，不包含 Python 脚本。
 - 使用 `GITHUB_TOKEN` 的最小权限提交回执。
 - 生产环境优先使用一次性或可清理 runner；固定硬件主机必须限制并发并清理 worktree。

@@ -2,12 +2,12 @@
 
 role: orchestrator
 runtime: go
-runner_label: codex-b
+runner_label: code-relay-checkpoint
 repository_root: .
 
-# B host uses:
+# Checkpoint host uses:
 # role: checkpoint
 # runtime: go
-# runner_label: codex-b
-# Set CODE_RELAY_INVITE_SECRET on both A and B when signed invitation integrity
+# runner_label: code-relay-checkpoint
+# Set CODE_RELAY_INVITE_SECRET on both Dev Host and Checkpoint Host when signed invitation integrity
 # is required (32+ characters).

@@ -1,6 +1,6 @@
 # Code Relay runtime deployment
 
-The supported default checkpoint path is the repository's GitHub Actions workflow on a dedicated `codex-b` self-hosted runner. The service definitions below are optional compatibility examples for controlled deployments that deliberately choose the local `daemon` command; the plugin does not install or start them automatically.
+The supported default checkpoint path is the repository's GitHub Actions workflow on a dedicated `code-relay-checkpoint` self-hosted runner. The service definitions below are optional compatibility examples for controlled deployments that deliberately choose the local `daemon` command; the plugin does not install or start them automatically.
 
 The daemon binds to `127.0.0.1` by default. Binding to any other address is
 rejected unless `CODE_RELAY_WEBHOOK_SECRET` is configured with at least 32

@@ -3,7 +3,7 @@
 The repository's automated tests cover the security and protocol gates below.
 Run `go test ./...` and `go test -race ./...` before connecting the staging
 GitHub App. The final three rows require a staging GitHub App and isolated
-`codex-b` runner because they exercise real GitHub Actions behavior.
+`code-relay-checkpoint` runner because they exercise real GitHub Actions behavior.
 
 | Class | Scenario | Expected result | Automated coverage |
 | --- | --- | --- | --- |
@@ -24,4 +24,3 @@ GitHub App. The final three rows require a staging GitHub App and isolated
 Hosted audit logs are JSON and contain subject/login, tool, outcome, and
 duration only. Access tokens, private keys, repository credentials, and runner
 details must not be copied into prompts, receipts, or logs.
-

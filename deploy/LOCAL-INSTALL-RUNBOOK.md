@@ -116,7 +116,7 @@ Show Code Relay checkpoint status and the latest receipts.
 
 ## 更新插件
 
-1. 修改源码后重新执行路径 B 的打包命令；始终使用默认输出目录
+1. 修改源码后重新执行“从源码打包”的命令；始终使用默认输出目录
    `dist/plugin`。
 2. 重启 ChatGPT 桌面版，让本地 marketplace 重新读取插件文件。
 3. 如仍显示旧内容，在 Plugins Directory 中先卸载 Code Relay，再重新安装。

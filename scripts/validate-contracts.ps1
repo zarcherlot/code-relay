@@ -34,11 +34,33 @@ foreach ($field in @("allowed_commands", "denied_command_arguments", "deny_token
 }
 
 $manifest = Read-Json ".codex-plugin/plugin.json"
-if ($manifest.name -ne "code-relay" -or $manifest.version -notmatch '^3\.0\.0(?:\+codex\.[A-Za-z0-9._-]+)?$') {
-  throw "Plugin manifest must identify code-relay 3.0.0, optionally with a Codex cachebuster"
+if ($manifest.name -ne "code-relay" -or $manifest.version -notmatch '^3\.1\.0(?:\+codex\.[A-Za-z0-9._-]+)?$') {
+  throw "Plugin manifest must identify code-relay 3.1.0, optionally with a Codex cachebuster"
 }
 if ($manifest.interface.displayName -ne "Code Relay") {
   throw "Plugin display name must be Code Relay"
+}
+$baseVersion = $manifest.version -replace '\+codex\..+$', ''
+$npmPackage = Read-Json "package.json"
+$registryServer = Read-Json "server.json"
+if ($npmPackage.name -ne "code-relay-mcp" -or $npmPackage.version -ne $baseVersion) {
+  throw "npm package name/version does not match Code Relay $baseVersion"
+}
+if ($npmPackage.mcpName -ne "io.github.zarcherlot/code-relay") {
+  throw "npm mcpName must use the authenticated GitHub namespace"
+}
+if ($registryServer.name -ne $npmPackage.mcpName -or $registryServer.version -ne $npmPackage.version) {
+  throw "server.json name/version does not match package.json"
+}
+$registryPackage = @($registryServer.packages | Where-Object { $_.registryType -eq "npm" })
+if ($registryPackage.Count -ne 1 -or $registryPackage[0].identifier -ne $npmPackage.name -or $registryPackage[0].version -ne $npmPackage.version -or $registryPackage[0].transport.type -ne "stdio") {
+  throw "server.json must expose the exact npm package through stdio"
+}
+$installGuide = Join-Path $root "install.md"
+if (-not (Test-Path -LiteralPath $installGuide -PathType Leaf)) { throw "Missing install.md" }
+$installGuideText = Get-Content -LiteralPath $installGuide -Raw
+foreach ($fragment in @("code-relay-mcp@latest", "--client codex", "--yes", "SHA256SUMS")) {
+  if ($installGuideText -notmatch [regex]::Escape($fragment)) { throw "install.md is missing $fragment" }
 }
 
 $mcp = Read-Json ".mcp.json"
@@ -66,6 +88,12 @@ foreach ($fragment in @('runbooks/**', 'runbook_id:', 'jobs:', 'checkpoint:')) {
 foreach ($legacyFragment in @('tasks/**', 'task_id:', 'verify-on-b')) {
   if ($checkpointWorkflow -match [regex]::Escape($legacyFragment)) { throw "Checkpoint workflow contains legacy contract $legacyFragment" }
 }
+$publishWorkflow = Join-Path $root ".github/workflows/publish-mcp.yml"
+if (-not (Test-Path -LiteralPath $publishWorkflow -PathType Leaf)) { throw "Missing npm/MCP Registry publication workflow" }
+$publishWorkflowText = Get-Content -LiteralPath $publishWorkflow -Raw
+foreach ($fragment in @("npm publish", "mcp-publisher validate server.json", "login github-oidc", "mcp-publisher publish server.json")) {
+  if ($publishWorkflowText -notmatch [regex]::Escape($fragment)) { throw "Publication workflow is missing $fragment" }
+}
 
 $runbook = Read-Json "examples/runbook-001.json"
 foreach ($field in @("runbook_id", "source_commit", "target", "objective", "validation_plan", "expected_results")) {
@@ -79,4 +107,4 @@ if ($receipt.status -notin @("passed", "failed", "blocked")) {
   throw "Receipt example has an invalid status"
 }
 
-Write-Output "Code Relay contracts validated: $($schemaFiles.Count) schemas, plugin $($manifest.version), MCP, runbook and receipt fixtures."
+Write-Output "Code Relay contracts validated: $($schemaFiles.Count) schemas, plugin $($manifest.version), npm $($npmPackage.version), MCP Registry, runbook and receipt fixtures."

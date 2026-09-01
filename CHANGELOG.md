@@ -4,6 +4,20 @@ All notable changes to Code Relay are recorded here. The project is currently in
 
 ## [Unreleased]
 
+### Added
+
+- Added the `code-relay-mcp` npm distribution with a zero-dependency launcher
+  that downloads and verifies the matching native Code Relay release artifact.
+- Added an agent-readable `install.md` and an idempotent installer for Codex,
+  Claude Code, Cursor, VS Code, and generic MCP clients.
+- Added official MCP Registry metadata and tag-driven npm/Registry publication
+  automation.
+
+### Changed
+
+- Renamed the GitHub Actions checkpoint runner label from `codex-b` to
+  `code-relay-checkpoint`; existing runners must be relabelled before upgrading.
+
 ## [3.0.0] - 2026-08-31
 
 ### Breaking
@@ -86,7 +100,7 @@ All notable changes to Code Relay are recorded here. The project is currently in
 - Orchestrator and checkpoint Skills with plugin-local MCP tools.
 - Branch-scoped project binding using canonical repository and remote ref.
 - Short-lived checkpoint invitation links.
-- B-side empty-workspace clone, project association, and watcher bootstrap.
+- Checkpoint-side empty-workspace clone, project association, and watcher bootstrap.
 - Private runbook inbox, remote-ref polling, deduplication, receipt validation, and self-hosted runner workflow.
 - End-to-end tests for binding, invitations, cloning, watcher lifecycle, and safe execution.
 

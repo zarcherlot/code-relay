@@ -17,13 +17,20 @@ Run the complete test and compile checks from the repository root:
 go test ./...
 go vet ./...
 go build ./cmd/code-relay-agent
+npm ci
+npm test
+npm run verify
 ./scripts/validate-contracts.ps1
 ./scripts/smoke-e2e.ps1
 ./scripts/package-plugin.ps1 -Output dist/plugin-smoke
 git diff --check
 ```
 
-CI additionally runs the race detector on Linux. The packaging command builds the native executable, checks its version, and parses the generated `.mcp.json`. When changing a Skill, also verify its frontmatter before submitting.
+CI additionally runs the race detector on Linux and checks the npm launcher on
+Windows, macOS, and Linux. Node.js 18+ is required for npm distribution work.
+The packaging command builds the native executable, checks its version, and
+parses the generated `.mcp.json`. When changing a Skill, also verify its
+frontmatter before submitting.
 
 ## Pull requests
 
@@ -35,7 +42,7 @@ CI additionally runs the race detector on Linux. The packaging command builds th
 ## Design principles
 
 - One binding means one canonical repository and one remote branch.
-- B must never silently overwrite an existing workspace or active worktree.
+- The Checkpoint Host must never silently overwrite an existing workspace or active worktree.
 - Runbooks and receipts are immutable, source-commit-bound records.
 - Failed and blocked validation must produce an explicit receipt.
 - Dangerous commands require a deliberate product decision; they are not enabled by convenience.

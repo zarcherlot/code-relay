@@ -35,7 +35,7 @@ try {
     $env:CGO_ENABLED = "0"
     $env:GOOS = $goos
     $env:GOARCH = $goarch
-    go build -trimpath -ldflags "-s -w -X main.version=3.0.0" -o $binary ./cmd/code-relay-agent
+    go build -trimpath -ldflags "-s -w -X main.version=3.1.0" -o $binary ./cmd/code-relay-agent
   } finally {
     Pop-Location
   }
@@ -51,7 +51,7 @@ try {
 # Runbook
 - runbook_id: e2e-smoke
 - source_commit: $commit
-- target: B
+- target: checkpoint
 - objective: verify the local Code Relay end-to-end path
 
 ## Validation Plan

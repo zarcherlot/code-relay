@@ -1,7 +1,7 @@
 {
   "runbook_id": "runbook-001",
   "source_commit": "0000000",
-  "target": "B",
+  "target": "checkpoint",
   "objective": "验证 Code Relay MVP 的最小闭环",
   "validation_plan": ["go version"],
   "expected_results": ["命令退出码为 0", "输出包含 Go 版本"]

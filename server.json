@@ -1,0 +1,24 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.zarcherlot/code-relay",
+  "title": "Code Relay",
+  "description": "Branch-scoped runbooks, remote checkpoints, and auditable verification receipts.",
+  "repository": {
+    "url": "https://github.com/zarcherlot/code-relay",
+    "source": "github"
+  },
+  "version": "3.1.0",
+  "websiteUrl": "https://github.com/zarcherlot/code-relay",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "code-relay-mcp",
+      "version": "3.1.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

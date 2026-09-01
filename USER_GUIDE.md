@@ -1,6 +1,6 @@
 # Code Relay 用户使用指南
 
-Code Relay 适合这样的工作方式：你只在 A 主机的 Codex 中描述需求，A 负责开发并发布 runbook，B 主机作为 Checkpoint 在目标环境验证，最后把结构化 Receipt 交回 A。
+Code Relay 适合这样的工作方式：你只在 Dev Host 的 Codex 中描述需求，Dev Host 负责开发并发布 runbook，Checkpoint Host 在目标环境验证，最后把结构化 Receipt 交回 Dev Host。
 
 ## 1. 你会看到什么
 
@@ -50,13 +50,28 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
 `.agents/plugins/marketplace.json` 的 `source.path`。从零开始准备源码和依赖时，
 请参阅[本机安装运行手册](deploy/LOCAL-INSTALL-RUNBOOK.md)。
 
+### 通过 npm 接入其他 AI 客户端
+
+如果客户端支持 MCP 但不使用 Codex 插件目录，可以让客户端读取
+[install.md](install.md)，或直接运行：
+
+```sh
+npx -y code-relay-mcp@latest install --client generic
+```
+
+安装器支持 `codex`、`claude-code`、`cursor`、`vscode` 和 `generic`。先不带
+`--yes` 预览变更，获得用户确认后再应用。npm 路径需要 Node.js 18+，但不需要
+Go；第一次真正启动 MCP 时会下载并校验对应平台的原生 agent。npm 安装只提供
+MCP 工具，Codex 插件安装还会提供 `$code-relay:relay` 和
+`$code-relay:checkpoint` Skill。
+
 ### A 主机（Relay 端）
 
 安装插件后，在目标工程目录的 Codex 中说：“为当前工程当前分支启用 Code Relay”。插件会读取 Git remote 和当前分支，生成项目配置、workflow、runbook/Receipt 目录，提交并推送。
 
-### B 主机（Checkpoint 端）
+### Checkpoint Host（验证端）
 
-B 用户安装同一个 Code Relay 插件，把 A 生成的加入链接粘贴到该工程的 Codex 中，并确认仓库、分支和权限。插件生成 Checkpoint 配置；随后在同一仓库注册带 `codex-b` 标签的 GitHub Actions self-hosted runner。runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
+Checkpoint 用户安装同一个 Code Relay 插件，把 Dev Host 生成的加入链接粘贴到该工程的 Codex 中，并确认仓库、分支和权限。插件生成 Checkpoint 配置；随后在同一仓库注册带 `code-relay-checkpoint` 标签的 GitHub Actions self-hosted runner。runner 注册是唯一需要在 GitHub/主机层完成的一次性管理操作。
 
 排查主机环境时运行：
 
@@ -72,7 +87,7 @@ code-relay-agent doctor --root .
 
 在 A 的 Codex 中描述业务目标，例如：
 
-> 完成支付回调幂等改造，提交并合入；合入后让 B 验证，失败时继续修复。
+> 完成支付回调幂等改造，提交并合入；合入后让 Checkpoint 验证，失败时继续修复。
 
 开发、提交、PR 和 CI 完成后，记下合入后的完整 commit SHA。不要使用工作分支的旧 SHA。
 
@@ -82,7 +97,7 @@ code-relay-agent doctor --root .
 
 你只需要说：
 
-> 代码合入后，让 B 在目标环境验证支付回调幂等性，并收集日志和截图。
+> 代码合入后，让 Checkpoint 在目标环境验证支付回调幂等性，并收集日志和截图。
 
 重复发布同一份 runbook 是幂等的；同一 ID 内容不一致时，插件会停止并提示确认。
 
@@ -119,7 +134,7 @@ receipts/<runbook_id>/receipt.json
 receipts/<runbook_id>/receipt.md
 ```
 
-正常情况下，B 用户不需要手工执行 runbook；GitHub Actions runner 会在发现 runbook 变更后调用 `code-relay-agent run-pending`。CLI 仅用于开发者故障排查。
+正常情况下，Checkpoint 用户不需要手工执行 runbook；GitHub Actions runner 会在发现 runbook 变更后调用 `code-relay-agent run-pending`。CLI 仅用于开发者故障排查。
 
 Receipt 会记录每条命令的 expected、actual、status、耗时、环境、风险和后续建议。`runbook_id`、`source_commit` 和 runbook 内容哈希不一致时，A 端会拒绝 Receipt。
 
@@ -153,8 +168,8 @@ Receipt 会记录每条命令的 expected、actual、status、耗时、环境、
 
 ## 7. 安全建议
 
-- B runner 使用独立、低权限账号和独立 worktree。
-- 在 A、B 主机安全配置相同的 `CODE_RELAY_INVITE_SECRET`（至少 32 个字符），让邀请链接启用 HMAC 完整性校验；不要把该值写进 Git、runbook、receipt 或聊天记录。
+- Checkpoint runner 使用独立、低权限账号和独立 worktree。
+- 在 Dev Host、Checkpoint Host 安全配置相同的 `CODE_RELAY_INVITE_SECRET`（至少 32 个字符），让邀请链接启用 HMAC 完整性校验；不要把该值写进 Git、runbook、receipt 或聊天记录。
 - GitHub Token 只授予仓库内容读写和 Actions 所需的最小权限。
 - 不要把 Token、密码或其他密钥写入 runbook、receipt 或日志。
 - 不要把未经审查的任意 shell 脚本放入 Validation Plan；运行时也会拒绝 shell 解释器和内联 eval 模式。

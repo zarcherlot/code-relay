@@ -1,8 +1,13 @@
 # Code Relay checkpoint runbook
 
 The supported production path is GitHub Actions with a dedicated self-hosted
-runner labelled `codex-b`. The local daemon service definitions are optional
+runner labelled `code-relay-checkpoint`. The local daemon service definitions are optional
 for controlled environments and are not started by the plugin.
+
+`code-relay-checkpoint` replaces the legacy `codex-b` label. Existing runners
+must be relabelled (or a new runner registered) before using the updated
+workflow; GitHub Actions will not schedule a job onto a runner that only has
+the old label.
 
 ## Bootstrap
 
@@ -11,7 +16,7 @@ for controlled environments and are not started by the plugin.
 2. Install the matching release binary for the host OS and verify its SHA-256
    against `SHA256SUMS`.
 3. Run `code-relay-agent doctor --root <project>` before registering the runner.
-4. Register the runner with the exact `codex-b` label and prevent overlapping
+4. Register the runner with the exact `code-relay-checkpoint` label and prevent overlapping
    jobs on the same checkpoint host.
 5. Configure `CODE_RELAY_INVITE_SECRET` when signed invitations are required.
 
@@ -26,7 +31,7 @@ for controlled environments and are not started by the plugin.
 
 | Symptom | Checks |
 |---|---|
-| Workflow is queued | Runner is online and has the `codex-b` label; no other job owns the concurrency group. |
+| Workflow is queued | Runner is online and has the `code-relay-checkpoint` label; no other job owns the concurrency group. |
 | Worktree is blocked | Source commit exists on the bound ref; remove only stale `.code-relay/worktrees/<runbook-id>` after reviewing Git state. |
 | Receipt is not pushed | Check token contents permission, branch/ref binding, and the workflow log; do not force-push. |
 | Doctor reports an error | Fix the named root, Git, metadata, binding, or remote check and run doctor again. |

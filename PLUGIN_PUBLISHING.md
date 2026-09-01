@@ -45,6 +45,52 @@ A workspace administrator can open the plugin from the Personal source and
 select Publish, then assign workspace roles. This makes the plugin available
 only inside that organization.
 
+## npm distribution
+
+The public MCP package is `code-relay-mcp`. Its version must match the base
+version in `.codex-plugin/plugin.json`, `server.json`, and the Go binaries.
+
+```sh
+npm ci
+npm test
+npm run verify
+npm pack --dry-run
+```
+
+The package is a zero-dependency launcher. On first MCP startup it downloads
+the matching platform binary from
+`https://github.com/zarcherlot/code-relay/releases/download/v<version>/`,
+checks the asset against that release's `SHA256SUMS`, and caches it per version.
+Therefore the GitHub Release must exist before the npm version is published.
+
+The first npm publication must be bootstrapped with an authenticated maintainer
+or a short-lived `NPM_TOKEN` GitHub secret. After the package exists, configure
+npm trusted publishing for repository `zarcherlot/code-relay`, workflow
+`publish-mcp.yml`, and the `npm publish` action. Remove the bootstrap token;
+later releases use GitHub OIDC and automatically receive npm provenance.
+
+## MCP Registry publication
+
+`server.json` publishes the npm package as
+`io.github.zarcherlot/code-relay`. The npm package's `mcpName` must be exactly
+the same value. Validate before release with the official publisher:
+
+```sh
+mcp-publisher validate server.json
+```
+
+`.github/workflows/publish-mcp.yml` verifies the npm version is public, logs in
+to the Registry through GitHub OIDC, and publishes `server.json`. The release
+workflow dispatches it after creating the matching GitHub Release. Publication
+can be verified at:
+
+```text
+https://registry.modelcontextprotocol.io/v0.1/servers/io.github.zarcherlot%2Fcode-relay/versions/<version>
+```
+
+The MCP Registry is a metadata directory for MCP clients. It is independent of
+the ChatGPT/Codex public plugin review described below.
+
 ## Public submission status
 
 The repository now contains both the local stdio MCP package and a hosted
