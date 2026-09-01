@@ -52,6 +52,34 @@ npx -y code-relay-mcp@latest install --client codex
 
 Replace `codex` with `claude-code`, `cursor`, `vscode`, or `generic` as needed.
 
+## MCP server details
+
+Code Relay is a local MCP server that communicates over **stdio**. The npm
+package starts the server with:
+
+```sh
+npx -y code-relay-mcp@3.1.0
+```
+
+The server implements the MCP JSON-RPC surface directly in Go (without a
+third-party MCP SDK). It supports `initialize`, `ping`, `tools/list`, and
+`tools/call`, and exposes these tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `bind_project` | Bind a repository and branch to a relay role. |
+| `create_checkpoint_invite` | Create a short-lived checkpoint join link. |
+| `join_checkpoint` | Join a branch-scoped checkpoint subscription. |
+| `watcher_status` | Read local watcher state. |
+| `stop_watcher` | Stop the local watcher. |
+| `doctor` | Run non-mutating local health checks. |
+| `publish_runbook` | Validate and publish a runbook. |
+| `status` | Read runbook and receipt status. |
+| `fetch_receipt` | Load and validate a runbook receipt. |
+| `analyze` | Analyze a receipt and determine the next state. |
+
+The implementation and transport loop are in [`internal/relay/mcp.go`](internal/relay/mcp.go).
+
 ## How it works
 
 <p align="center">

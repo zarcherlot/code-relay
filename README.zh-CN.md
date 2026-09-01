@@ -51,6 +51,23 @@ npx -y code-relay-mcp@latest install --client codex
 
 按客户端替换为 `claude-code`、`cursor`、`vscode` 或 `generic`。
 
+## MCP 服务器信息
+
+Code Relay 是通过 **stdio** 通信的本地 MCP 服务器。直接启动：
+
+```sh
+npx -y code-relay-mcp@3.1.0
+```
+
+服务器在 Go 中直接实现 MCP JSON-RPC（不依赖第三方 MCP SDK），支持
+`initialize`、`ping`、`tools/list` 和 `tools/call`。可用工具包括：
+
+`bind_project`、`create_checkpoint_invite`、`join_checkpoint`、
+`watcher_status`、`stop_watcher`、`doctor`、`publish_runbook`、`status`、
+`fetch_receipt`、`analyze`。
+
+实现与传输循环见 [`internal/relay/mcp.go`](internal/relay/mcp.go)。
+
 ## 工作原理
 
 <p align="center">
