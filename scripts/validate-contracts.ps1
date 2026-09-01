@@ -130,6 +130,12 @@ foreach ($fragment in @("postgres:", "redis:", "CODE_RELAY_SESSION_STORE: redis"
 }
 $dockerfileText = Get-Content -LiteralPath (Join-Path $root "Dockerfile") -Raw
 if ($dockerfileText -notmatch "COPY go\.mod go\.sum") { throw "Dockerfile must copy go.sum for reproducible dependency builds" }
+$postgresSource = Join-Path $root "internal/relay/postgres_control_plane.go"
+if (-not (Test-Path -LiteralPath $postgresSource -PathType Leaf)) { throw "Missing PostgreSQL control-plane repository" }
+$postgresText = Get-Content -LiteralPath $postgresSource -Raw
+foreach ($fragment in @("NewPostgresControlPlane", "EnsureTenant", "UpsertProject", "AppendAudit")) {
+  if ($postgresText -notmatch [regex]::Escape($fragment)) { throw "PostgreSQL repository is missing $fragment" }
+}
 $checkpointWorkflowPath = Join-Path $root ".github/workflows/checkpoint.yml"
 if (-not (Test-Path -LiteralPath $checkpointWorkflowPath -PathType Leaf)) { throw "Missing checkpoint workflow" }
 $checkpointWorkflow = Get-Content -LiteralPath $checkpointWorkflowPath -Raw

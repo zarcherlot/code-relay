@@ -49,6 +49,7 @@ func main() {
 		SSEEventHistory:   envInt("CODE_RELAY_SSE_EVENT_HISTORY", 256),
 		MaxSSEConnections: envInt("CODE_RELAY_SSE_MAX_CONNECTIONS", 1000),
 	}
+	var controlPlane *relay.PostgresControlPlane
 	remoteEnabled := strings.TrimSpace(os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID")) != ""
 	if remoteEnabled {
 		appID, parseErr := strconv.ParseInt(strings.TrimSpace(os.Getenv("CODE_RELAY_GITHUB_APP_ID")), 10, 64)
@@ -73,6 +74,13 @@ func main() {
 			fatal("configure remote backend: %v", backendErr)
 		}
 		backend.SetAllowedRefs(splitCSV(os.Getenv("CODE_RELAY_ALLOWED_REFS")))
+		if dsn := strings.TrimSpace(os.Getenv("CODE_RELAY_DATABASE_URL")); dsn != "" {
+			controlPlane, err = relay.NewPostgresControlPlane(context.Background(), dsn)
+			if err != nil {
+				fatal("connect to PostgreSQL control plane: %v", err)
+			}
+			defer controlPlane.Close()
+		}
 		oauthClientSecret, secretErr := envSecret("CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET", "CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET_FILE")
 		if secretErr != nil {
 			fatal("configure GitHub OAuth client secret: %v", secretErr)

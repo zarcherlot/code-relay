@@ -64,7 +64,9 @@ source of truth for repository authorization, branches, runbook commits,
 workflow dispatches, and receipts. Do not use process-local state when more
 than one gateway instance is deployed.
 The initial PostgreSQL tables are defined in `deploy/migrations/001_control_plane.sql`;
-Redis key/stream semantics are specified in `deploy/REDIS-CONTRACT.md`.
+the Go repository is in `internal/relay/postgres_control_plane.go`. Redis
+session semantics are implemented by `RedisSessionStore`; key/stream details
+are specified in `deploy/REDIS-CONTRACT.md`.
 `deploy/docker-compose.saas.yml` provides a local PostgreSQL/Redis/gateway
 integration environment; do not use its development credentials in production.
 Set `CODE_RELAY_ALLOWED_REFS` when the hosted deployment should limit users to
