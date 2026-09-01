@@ -22,6 +22,8 @@ func TestGitHubRemotePublishAndDispatch(t *testing.T) {
 			_, _ = w.Write([]byte(`{"repositories":[{"full_name":"acme/demo"}]}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/7/access_tokens":
 			_, _ = w.Write([]byte(`{"token":"installation-token","expires_at":"2030-01-01T00:00:00Z"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo":
+			_, _ = w.Write([]byte(`{"full_name":"acme/demo","private":true}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/acme/demo/contents/runbooks/remote-1/runbook.md":
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))

@@ -134,7 +134,9 @@ func (b *GitHubRemoteBackend) authorizedRepository(ctx context.Context, session 
 	if session.InstallationID <= 0 {
 		return nil, "", "", errors.New("请先完成 GitHub App 安装并绑定 installation")
 	}
-	if err := b.App.UserCanAccessRepository(ctx, session.AccessToken, session.InstallationID, repository); err != nil {
+	// The OAuth identity token is not a GitHub App user-to-server token. Use a
+	// short-lived installation token for repository authorization instead.
+	if err := b.App.verifyInstallationRepository(ctx, session.InstallationID, repository); err != nil {
 		return nil, "", "", err
 	}
 	repo, err := b.App.Repository(ctx, session.InstallationID, repository)
