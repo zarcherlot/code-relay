@@ -74,6 +74,9 @@ func main() {
 			fatal("configure remote backend: %v", backendErr)
 		}
 		backend.SetAllowedRefs(splitCSV(os.Getenv("CODE_RELAY_ALLOWED_REFS")))
+		if strings.EqualFold(envOr("CODE_RELAY_SESSION_STORE", "memory"), "redis") && strings.TrimSpace(os.Getenv("CODE_RELAY_DATABASE_URL")) == "" {
+			fatal("CODE_RELAY_DATABASE_URL is required when CODE_RELAY_SESSION_STORE=redis")
+		}
 		if dsn := strings.TrimSpace(os.Getenv("CODE_RELAY_DATABASE_URL")); dsn != "" {
 			controlPlane, err = relay.NewPostgresControlPlane(context.Background(), dsn)
 			if err != nil {
@@ -138,12 +141,42 @@ func main() {
 				fatal("configure Redis session store: %v", storeErr)
 			}
 			oauthConfig.SessionStore = store
-			eventStore, eventErr := relay.NewRedisSessionEventStore(redisClient, os.Getenv("CODE_RELAY_REDIS_KEY_PREFIX"))
+			eventStore, eventErr := relay.NewRedisSessionEventStoreWithRetention(redisClient, os.Getenv("CODE_RELAY_REDIS_KEY_PREFIX"), envDuration("CODE_RELAY_EVENT_RETENTION", 24*time.Hour))
 			if eventErr != nil {
 				_ = redisClient.Close()
 				fatal("configure Redis event store: %v", eventErr)
 			}
 			config.EventStore = eventStore
+			registry, registryErr := relay.NewRedisMCPSessionRegistry(redisClient, os.Getenv("CODE_RELAY_REDIS_KEY_PREFIX"))
+			if registryErr != nil {
+				_ = redisClient.Close()
+				fatal("configure Redis MCP session registry: %v", registryErr)
+			}
+			config.SessionRegistry = registry
+			rateLimiter, rateErr := relay.NewRedisRateLimiter(redisClient, os.Getenv("CODE_RELAY_REDIS_KEY_PREFIX"))
+			if rateErr != nil {
+				_ = redisClient.Close()
+				fatal("configure Redis rate limiter: %v", rateErr)
+			}
+			config.RateLimiter = rateLimiter
+			distributedLock, lockErr := relay.NewRedisDistributedLock(redisClient, os.Getenv("CODE_RELAY_REDIS_KEY_PREFIX"))
+			if lockErr != nil {
+				_ = redisClient.Close()
+				fatal("configure Redis distributed lock: %v", lockErr)
+			}
+			config.DistributedLock = distributedLock
+			codeStore, codeErr := relay.NewRedisAuthorizationCodeStore(redisClient, os.Getenv("CODE_RELAY_REDIS_KEY_PREFIX"), os.Getenv("CODE_RELAY_SESSION_SECRET"))
+			if codeErr != nil {
+				_ = redisClient.Close()
+				fatal("configure Redis OAuth authorization-code store: %v", codeErr)
+			}
+			oauthConfig.AuthorizationCodeStore = codeStore
+			config.Readiness = func(ctx context.Context) error {
+				if err := redisClient.Ping(ctx).Err(); err != nil {
+					return err
+				}
+				return controlPlane.Ping(ctx)
+			}
 			defer redisClient.Close()
 		} else if !strings.EqualFold(envOr("CODE_RELAY_SESSION_STORE", "memory"), "cookie") {
 			fatal("CODE_RELAY_SESSION_STORE must be memory, redis, or cookie")

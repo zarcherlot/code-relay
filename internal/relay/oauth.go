@@ -53,6 +53,7 @@ type OAuthConfig struct {
 	AuthorizationClientID     string
 	AuthorizationRedirectURLs []string
 	AuthorizationCodeTTL      time.Duration
+	AuthorizationCodeStore    AuthorizationCodeStore
 	OAuthScopes               []string
 }
 
@@ -80,12 +81,19 @@ type oauthState struct {
 	Expires       int64  `json:"exp"`
 }
 
-type oauthAuthorizationCode struct {
+type OAuthAuthorizationCode struct {
 	Session     OAuthSession
 	ClientID    string
 	RedirectURI string
 	Challenge   string
 	ExpiresAt   time.Time
+}
+
+// AuthorizationCodeStore persists one-time MCP authorization codes across
+// gateway instances. Implementations must make Consume atomic.
+type AuthorizationCodeStore interface {
+	Put(context.Context, string, OAuthAuthorizationCode, time.Duration) error
+	Consume(context.Context, string) (OAuthAuthorizationCode, error)
 }
 
 type githubUser struct {
@@ -102,12 +110,13 @@ type githubOAuthToken struct {
 }
 
 type OAuthService struct {
-	config OAuthConfig
-	client *http.Client
-	key    []byte
-	store  SessionStore
-	codeMu sync.Mutex
-	codes  map[string]oauthAuthorizationCode
+	config    OAuthConfig
+	client    *http.Client
+	key       []byte
+	store     SessionStore
+	codeStore AuthorizationCodeStore
+	codeMu    sync.Mutex
+	codes     map[string]OAuthAuthorizationCode
 }
 
 // IssueAccessToken creates an opaque bearer credential backed by the
@@ -170,7 +179,7 @@ func NewOAuthService(config OAuthConfig) (*OAuthService, error) {
 		return nil, errors.New("GitHub App slug is required for installation flow")
 	}
 	key := sha256.Sum256([]byte(config.SessionSecret))
-	return &OAuthService{config: config, client: &http.Client{Timeout: 15 * time.Second}, key: key[:], store: config.SessionStore, codes: make(map[string]oauthAuthorizationCode)}, nil
+	return &OAuthService{config: config, client: &http.Client{Timeout: 15 * time.Second}, key: key[:], store: config.SessionStore, codeStore: config.AuthorizationCodeStore, codes: make(map[string]OAuthAuthorizationCode)}, nil
 }
 
 // ServeHTTP serves the OAuth endpoints.  It is intended to be mounted under
@@ -326,13 +335,8 @@ func (s *OAuthService) token(w http.ResponseWriter, r *http.Request) {
 		s.oauthTokenError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
-	s.codeMu.Lock()
-	authCode, ok := s.codes[code]
-	if ok {
-		delete(s.codes, code)
-	}
-	s.codeMu.Unlock()
-	if !ok || time.Now().After(authCode.ExpiresAt) || authCode.ClientID != clientID || authCode.RedirectURI != redirectURI || !constantTimeEqual(authCode.Challenge, pkceChallenge(verifier)) {
+	authCode, consumeErr := s.consumeAuthorizationCode(r.Context(), code)
+	if consumeErr != nil || time.Now().After(authCode.ExpiresAt) || authCode.ClientID != clientID || authCode.RedirectURI != redirectURI || !constantTimeEqual(authCode.Challenge, pkceChallenge(verifier)) {
 		s.oauthTokenError(w, http.StatusBadRequest, "invalid_grant")
 		return
 	}
@@ -355,7 +359,15 @@ func (s *OAuthService) oauthTokenError(w http.ResponseWriter, status int, code s
 }
 
 func (s *OAuthService) issueAuthorizationCode(session OAuthSession, state oauthState) (string, error) {
+	return s.issueAuthorizationCodeContext(context.Background(), session, state)
+}
+
+func (s *OAuthService) issueAuthorizationCodeContext(ctx context.Context, session OAuthSession, state oauthState) (string, error) {
 	code := randomToken(32)
+	record := OAuthAuthorizationCode{Session: session, ClientID: state.ClientID, RedirectURI: state.RedirectURI, Challenge: state.CodeChallenge, ExpiresAt: time.Now().Add(s.config.AuthorizationCodeTTL)}
+	if s.codeStore != nil {
+		return code, s.codeStore.Put(ctx, code, record, s.config.AuthorizationCodeTTL)
+	}
 	s.codeMu.Lock()
 	now := time.Now()
 	for existing, record := range s.codes {
@@ -363,9 +375,23 @@ func (s *OAuthService) issueAuthorizationCode(session OAuthSession, state oauthS
 			delete(s.codes, existing)
 		}
 	}
-	s.codes[code] = oauthAuthorizationCode{Session: session, ClientID: state.ClientID, RedirectURI: state.RedirectURI, Challenge: state.CodeChallenge, ExpiresAt: time.Now().Add(s.config.AuthorizationCodeTTL)}
+	s.codes[code] = record
 	s.codeMu.Unlock()
 	return code, nil
+}
+
+func (s *OAuthService) consumeAuthorizationCode(ctx context.Context, code string) (OAuthAuthorizationCode, error) {
+	if s.codeStore != nil {
+		return s.codeStore.Consume(ctx, code)
+	}
+	s.codeMu.Lock()
+	defer s.codeMu.Unlock()
+	record, ok := s.codes[code]
+	if !ok {
+		return OAuthAuthorizationCode{}, errors.New("authorization code not found")
+	}
+	delete(s.codes, code)
+	return record, nil
 }
 
 func validateOAuthSession(session OAuthSession) (OAuthSession, error) {
@@ -456,7 +482,7 @@ func (s *OAuthService) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, s.cookie(s.config.StateCookie, "", -1))
 	if state.ClientID != "" {
-		authorizationCode, codeErr := s.issueAuthorizationCode(session, state)
+		authorizationCode, codeErr := s.issueAuthorizationCodeContext(r.Context(), session, state)
 		if codeErr != nil {
 			http.Error(w, "authorization code unavailable", http.StatusInternalServerError)
 			return

@@ -50,7 +50,11 @@ type MCPHTTPConfig struct {
 	SSEEventHistory   int
 	MaxSSEConnections int
 	EventStore        SessionEventStore
+	SessionRegistry   MCPSessionRegistry
+	RateLimiter       DistributedRateLimiter
+	DistributedLock   DistributedLock
 	ControlPlane      ControlPlane
+	Readiness         func(context.Context) error
 }
 
 // MCPHTTPHandler returns an authenticated HTTP handler for the MCP endpoint.
@@ -171,6 +175,10 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.health(w, r)
 		return
 	}
+	if r.URL.Path == "/readyz" {
+		h.ready(w, r)
+		return
+	}
 	if r.URL.Path == "/" {
 		h.home(w, r)
 		return
@@ -238,7 +246,13 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !h.allowClient(clientID) {
+	allowed, limitErr := h.allowClient(r.Context(), clientID)
+	if limitErr != nil {
+		h.config.AuditLogger.Warn("distributed rate limiter unavailable", "subject", clientID, "error", limitErr)
+		http.Error(w, "rate limiter unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if !allowed {
 		http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}
@@ -268,10 +282,18 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mcpSessionID := strings.TrimSpace(r.Header.Get("Mcp-Session-Id"))
 	if request.Method == "initialize" && mcpSessionID == "" {
 		mcpSessionID = h.newSession(clientID)
+		if h.config.SessionRegistry != nil {
+			if err := h.config.SessionRegistry.Register(r.Context(), mcpSessionID, clientID, h.config.SessionTTL); err != nil {
+				h.discardSession(mcpSessionID)
+				h.config.AuditLogger.Warn("MCP session registration failed", "subject", clientID, "error", err)
+				http.Error(w, "session store unavailable", http.StatusServiceUnavailable)
+				return
+			}
+		}
 	} else if mcpSessionID != "" {
 		mcpSession := h.lookupSession(mcpSessionID)
 		if mcpSession == nil && h.config.EventStore != nil {
-			mcpSession = h.adoptSession(mcpSessionID, clientID)
+			mcpSession = h.adoptSession(r.Context(), mcpSessionID, clientID)
 		}
 		if mcpSession == nil {
 			http.Error(w, "unknown MCP session", http.StatusBadRequest)
@@ -329,6 +351,17 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), h.config.RequestTimeout)
 	defer cancel()
+	var releaseLock func(context.Context) error
+	if h.config.DistributedLock != nil && h.config.RemoteBackend != nil && requestToolName(request) == "publish_runbook" {
+		lockName := h.remoteLockName(session, request)
+		var lockErr error
+		releaseLock, lockErr = h.config.DistributedLock.Acquire(ctx, lockName, 2*time.Minute)
+		if lockErr != nil {
+			h.writeMCP(w, mcpError(request.ID, -32003, "request already in progress"))
+			return
+		}
+		defer func() { _ = releaseLock(context.Background()) }()
+	}
 	started := time.Now()
 	var response map[string]any
 	if h.config.RemoteBackend != nil && request.Method == "tools/call" {
@@ -341,6 +374,7 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		response = handleRemoteMCP(ctx, h.config.RemoteBackend, session, request)
 		h.persistBinding(w, session, request, response)
+		h.persistRun(ctx, session, request, response)
 	} else {
 		response = handleMCP(request)
 	}
@@ -531,8 +565,15 @@ func (h *mcpHTTPHandler) newSession(owner string) string {
 	}
 }
 
-func (h *mcpHTTPHandler) adoptSession(id, owner string) *mcpHTTPSession {
+func (h *mcpHTTPHandler) adoptSession(ctx context.Context, id, owner string) *mcpHTTPSession {
 	if strings.TrimSpace(id) == "" {
+		return nil
+	}
+	if h.config.SessionRegistry == nil {
+		return nil
+	}
+	registeredOwner, err := h.config.SessionRegistry.Owner(ctx, id)
+	if err != nil || registeredOwner != owner {
 		return nil
 	}
 	h.mu.Lock()
@@ -543,6 +584,12 @@ func (h *mcpHTTPHandler) adoptSession(id, owner string) *mcpHTTPSession {
 	session := &mcpHTTPSession{id: id, owner: owner, expiresAt: time.Now().Add(h.config.SessionTTL), subscribers: make(map[chan mcpSSEEvent]struct{})}
 	h.sessions[id] = session
 	return session
+}
+
+func (h *mcpHTTPHandler) discardSession(id string) {
+	h.mu.Lock()
+	delete(h.sessions, id)
+	h.mu.Unlock()
 }
 
 func (h *mcpHTTPHandler) lookupSession(id string) *mcpHTTPSession {
@@ -595,6 +642,9 @@ func (h *mcpHTTPHandler) deleteSession(w http.ResponseWriter, r *http.Request, i
 	}
 	session.subscribers = nil
 	session.mu.Unlock()
+	if h.config.SessionRegistry != nil {
+		_ = h.config.SessionRegistry.Revoke(r.Context(), id)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -605,7 +655,7 @@ func (h *mcpHTTPHandler) sessionSSE(w http.ResponseWriter, r *http.Request, id, 
 	}
 	session := h.lookupSession(id)
 	if session == nil && h.config.EventStore != nil {
-		session = h.adoptSession(id, owner)
+		session = h.adoptSession(r.Context(), id, owner)
 	}
 	if session == nil {
 		http.Error(w, "unknown MCP session", http.StatusNotFound)
@@ -756,8 +806,40 @@ func (h *mcpHTTPHandler) persistBinding(w http.ResponseWriter, session OAuthSess
 	}
 }
 
+func (h *mcpHTTPHandler) persistRun(ctx context.Context, session OAuthSession, request mcpRequest, response map[string]any) {
+	recorder, ok := h.config.ControlPlane.(RunRecorder)
+	if !ok || requestToolName(request) != "publish_runbook" || response == nil || response["error"] != nil {
+		return
+	}
+	result, ok := response["result"].(map[string]any)
+	if !ok {
+		return
+	}
+	content, ok := result["structuredContent"].(map[string]any)
+	if !ok {
+		return
+	}
+	runbookID, _ := content["runbook_id"].(string)
+	repository, _ := content["repository"].(string)
+	ref, _ := content["ref"].(string)
+	commitSHA, _ := content["source_commit"].(string)
+	if runbookID == "" || repository == "" || ref == "" {
+		return
+	}
+	projectID := projectKey(repository, ref)
+	runID := runKey(projectID, runbookID)
+	if err := recorder.UpsertRun(ctx, runID, projectID, session.Subject, runbookID, commitSHA, "", "queued"); err != nil {
+		h.config.AuditLogger.Warn("control plane run write failed", "subject", session.Subject, "runbook_id", runbookID, "error", err)
+	}
+}
+
 func projectKey(repository, ref string) string {
 	digest := sha256.Sum256([]byte(repository + "@" + ref))
+	return hex.EncodeToString(digest[:])
+}
+
+func runKey(projectID, runbookID string) string {
+	digest := sha256.Sum256([]byte(projectID + "@" + runbookID))
 	return hex.EncodeToString(digest[:])
 }
 
@@ -795,6 +877,26 @@ func (h *mcpHTTPHandler) health(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "service": "code-relay-mcp", "version": versionString})
 }
 
+func (h *mcpHTTPHandler) ready(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.config.Readiness != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := h.config.Readiness(ctx); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "not_ready", "service": "code-relay-mcp"})
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ready", "service": "code-relay-mcp", "version": versionString})
+}
+
 func (h *mcpHTTPHandler) home(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
@@ -824,7 +926,10 @@ func (h *mcpHTTPHandler) authorized(r *http.Request) bool {
 	return value[len("Bearer "):] == h.config.BearerToken
 }
 
-func (h *mcpHTTPHandler) allowClient(client string) bool {
+func (h *mcpHTTPHandler) allowClient(ctx context.Context, client string) (bool, error) {
+	if h.config.RateLimiter != nil {
+		return h.config.RateLimiter.Allow(ctx, client, h.config.RatePerMinute, time.Minute)
+	}
 	now := time.Now()
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -836,10 +941,22 @@ func (h *mcpHTTPHandler) allowClient(client string) bool {
 	}
 	if len(recent) >= h.config.RatePerMinute {
 		h.clients[client] = recent
-		return false
+		return false, nil
 	}
 	h.clients[client] = append(recent, now)
-	return true
+	return true, nil
+}
+
+func (h *mcpHTTPHandler) remoteLockName(session OAuthSession, request mcpRequest) string {
+	args, _ := request.Params["arguments"].(map[string]any)
+	repository, ref := projectBindingArgs(session, args)
+	runbookID := "request"
+	if markdown, ok := args["markdown"].(string); ok {
+		if runbook, err := parseRunbook(markdown); err == nil {
+			runbookID = runbook.ID
+		}
+	}
+	return session.Subject + ":" + repository + "@" + ref + ":" + runbookID
 }
 
 func (h *mcpHTTPHandler) filteredTools() []map[string]any {

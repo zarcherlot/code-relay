@@ -14,13 +14,18 @@ import (
 // RedisSessionEventStore uses Redis Streams so every gateway instance observes
 // the same ordered event history and reconnect cursors.
 type RedisSessionEventStore struct {
-	client redis.UniversalClient
-	prefix string
+	client    redis.UniversalClient
+	prefix    string
+	retention time.Duration
 }
 
 var ErrEventCursorExpired = errors.New("event cursor is older than retained history")
 
 func NewRedisSessionEventStore(client redis.UniversalClient, prefix string) (*RedisSessionEventStore, error) {
+	return NewRedisSessionEventStoreWithRetention(client, prefix, 0)
+}
+
+func NewRedisSessionEventStoreWithRetention(client redis.UniversalClient, prefix string, retention time.Duration) (*RedisSessionEventStore, error) {
 	if client == nil {
 		return nil, ErrRedisClientRequired
 	}
@@ -28,7 +33,7 @@ func NewRedisSessionEventStore(client redis.UniversalClient, prefix string) (*Re
 	if prefix == "" {
 		prefix = "code-relay:"
 	}
-	return &RedisSessionEventStore{client: client, prefix: prefix}, nil
+	return &RedisSessionEventStore{client: client, prefix: prefix, retention: retention}, nil
 }
 
 func (s *RedisSessionEventStore) key(sessionID string) string {
@@ -41,7 +46,16 @@ func (s *RedisSessionEventStore) Publish(ctx context.Context, sessionID string, 
 		args.MaxLen = int64(maxLen)
 		args.Approx = true
 	}
-	return s.client.XAdd(ctx, args).Result()
+	id, err := s.client.XAdd(ctx, args).Result()
+	if err != nil {
+		return "", err
+	}
+	if s.retention > 0 {
+		if err := s.client.Expire(ctx, s.key(sessionID), s.retention).Err(); err != nil {
+			return "", err
+		}
+	}
+	return id, nil
 }
 
 func (s *RedisSessionEventStore) Read(ctx context.Context, sessionID, afterID string, block time.Duration) ([]SessionEvent, error) {

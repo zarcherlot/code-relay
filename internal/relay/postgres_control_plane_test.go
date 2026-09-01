@@ -29,6 +29,9 @@ func TestPostgresControlPlaneIntegration(t *testing.T) {
 	if err := controlPlane.UpsertProject(ctx, projectID, tenantID, "acme/demo", "refs/heads/main", 7); err != nil {
 		t.Fatal(err)
 	}
+	if err := controlPlane.UpsertRun(ctx, projectID+"-run", projectID, "17", "runbook-001", "abc123", "", "queued"); err != nil {
+		t.Fatal(err)
+	}
 	if err := controlPlane.AppendAudit(ctx, tenantID, "17", "integration.test", projectID, "", []byte(`{"ok":true}`)); err != nil {
 		t.Fatal(err)
 	}

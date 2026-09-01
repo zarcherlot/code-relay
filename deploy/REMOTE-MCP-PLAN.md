@@ -35,10 +35,11 @@ operations use the GitHub Contents and Actions APIs and never read or write
 `CODE_RELAY_MCP_ROOT`.
 
 This branch now includes a standards-compliant single-client authorization-code
-and PKCE token exchange. It is still not a public SaaS launch: the reference
-process-local session/code store must be replaced by Redis (and the durable
-tenant/audit layer by PostgreSQL), and client registration plus multi-instance
-key/session rotation must be completed before public ChatGPT submission.
+and PKCE token exchange. Redis-backed sessions, one-time authorization codes,
+MCP session ownership, distributed rate limits and run locks are implemented;
+PostgreSQL provides the durable tenant/project/run/audit layer. A public SaaS
+launch still requires production secret provisioning, key rotation procedures,
+staging GitHub E2E approval, and the operational/privacy gates below.
 
 Authentication endpoints are `/auth/github` (OAuth start),
 `/auth/github/callback` (PKCE callback), `/auth/github/install` (start App
@@ -59,7 +60,7 @@ OAuth state is sealed and short-lived; browser sessions use opaque server-side
 cookies when `CODE_RELAY_SESSION_STORE=memory` (or a future Redis adapter).
 For SaaS production, PostgreSQL is required for durable tenants, members, project
 bindings, runs, and audit references; Redis is required for shared MCP session
-state, event replay, rate limits, and distributed locks. GitHub remains the
+state, event replay, authorization codes, rate limits, and distributed locks. GitHub remains the
 source of truth for repository authorization, branches, runbook commits,
 workflow dispatches, and receipts. Do not use process-local state when more
 than one gateway instance is deployed.
@@ -76,7 +77,7 @@ an explicit branch allowlist (for example `owner/repo@refs/heads/main`).
 
 1. Build `cmd/code-relay-mcp`. Keep MCP `stdio` unchanged for desktop/local
    use. Hosted mode exposes the repository-scoped tools over Streamable HTTP at
-   `/mcp`, plus `/healthz`, OAuth metadata, and GitHub OAuth/App installation
+   `/mcp`, plus `/healthz`, `/readyz`, OAuth metadata, and GitHub OAuth/App installation
    endpoints.
 2. Deploy the gateway as a single Go container on Cloud Run, Fly.io, or an
    equivalent HTTPS container platform. Use a custom host such as

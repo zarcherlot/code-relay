@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,18 @@ func TestMCPHTTPHealthAndAuth(t *testing.T) {
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("authenticated status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestMCPHTTPReadiness(t *testing.T) {
+	handler, err := MCPHTTPHandler(MCPHTTPConfig{Root: t.TempDir(), BearerToken: strings.Repeat("t", 32), Readiness: func(context.Context) error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"status":"ready"`) {
+		t.Fatalf("unexpected readiness response: %d %s", recorder.Code, recorder.Body.String())
 	}
 }
 

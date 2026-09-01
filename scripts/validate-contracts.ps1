@@ -100,7 +100,7 @@ if ($streamableContract.hosted.session.idHeader -ne "Mcp-Session-Id" -or $stream
 $transportDoc = Join-Path $root "deploy/STREAMABLE-HTTP-CONTRACT.md"
 if (-not (Test-Path -LiteralPath $transportDoc -PathType Leaf)) { throw "Missing Streamable HTTP contract" }
 $transportDocText = Get-Content -LiteralPath $transportDoc -Raw
-foreach ($fragment in @("stdio", "POST /mcp", "GET /mcp", "DELETE /mcp", "Mcp-Session-Id", "Last-Event-ID", "text/event-stream", "Protected Resource Metadata", "/oauth/authorize", "/oauth/token", "PostgreSQL", "Redis")) {
+foreach ($fragment in @("stdio", "POST /mcp", "GET /mcp", "DELETE /mcp", "Mcp-Session-Id", "Last-Event-ID", "text/event-stream", "Protected Resource Metadata", "/oauth/authorize", "/oauth/token", "/readyz", "PostgreSQL", "Redis")) {
   if ($transportDocText -notmatch [regex]::Escape($fragment)) { throw "Streamable HTTP contract is missing $fragment" }
 }
 foreach ($legacyFragment in @("/sse", "/messages", "session_id=")) {
@@ -121,7 +121,7 @@ foreach ($fragment in @("CREATE TABLE IF NOT EXISTS tenants", "CREATE TABLE IF N
 $redisContract = Join-Path $root "deploy/REDIS-CONTRACT.md"
 if (-not (Test-Path -LiteralPath $redisContract -PathType Leaf)) { throw "Missing Redis session/event contract" }
 $redisContractText = Get-Content -LiteralPath $redisContract -Raw
-foreach ($fragment in @("session:", "session-events:", "XREAD BLOCK", "XTRIM MINID", "Last-Event-ID", "Pub/Sub is not a durability mechanism")) {
+foreach ($fragment in @("session:", "oauth-code:", "mcp-session:", "session-events:", "XREAD BLOCK", "Last-Event-ID", "Pub/Sub is not a durability mechanism")) {
   if ($redisContractText -notmatch [regex]::Escape($fragment)) { throw "Redis contract is missing $fragment" }
 }
 $compose = Join-Path $root "deploy/docker-compose.saas.yml"
@@ -137,6 +137,18 @@ if (-not (Test-Path -LiteralPath $postgresSource -PathType Leaf)) { throw "Missi
 $postgresText = Get-Content -LiteralPath $postgresSource -Raw
 foreach ($fragment in @("NewPostgresControlPlane", "EnsureTenant", "UpsertProject", "AppendAudit")) {
   if ($postgresText -notmatch [regex]::Escape($fragment)) { throw "PostgreSQL repository is missing $fragment" }
+}
+$redisCodeSource = Join-Path $root "internal/relay/redis_oauth_code_store.go"
+if (-not (Test-Path -LiteralPath $redisCodeSource -PathType Leaf)) { throw "Missing Redis OAuth authorization-code store" }
+$redisCodeText = Get-Content -LiteralPath $redisCodeSource -Raw
+foreach ($fragment in @("NewRedisAuthorizationCodeStore", "GetDel")) {
+  if ($redisCodeText -notmatch [regex]::Escape($fragment)) { throw "Redis OAuth code store is missing $fragment" }
+}
+$redisCoordinationSource = Join-Path $root "internal/relay/redis_coordination.go"
+if (-not (Test-Path -LiteralPath $redisCoordinationSource -PathType Leaf)) { throw "Missing Redis coordination adapters" }
+$redisCoordinationText = Get-Content -LiteralPath $redisCoordinationSource -Raw
+foreach ($fragment in @("NewRedisMCPSessionRegistry", "NewRedisRateLimiter", "NewRedisDistributedLock")) {
+  if ($redisCoordinationText -notmatch [regex]::Escape($fragment)) { throw "Redis coordination adapter is missing $fragment" }
 }
 $checkpointWorkflowPath = Join-Path $root ".github/workflows/checkpoint.yml"
 if (-not (Test-Path -LiteralPath $checkpointWorkflowPath -PathType Leaf)) { throw "Missing checkpoint workflow" }

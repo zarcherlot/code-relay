@@ -11,6 +11,9 @@ The hosted gateway exposes one MCP endpoint. It is not a proxy for a local
 checkout: repository, ref, tenant, and project authorization are resolved by
 the gateway before a GitHub API operation is attempted.
 
+`GET /healthz` reports process liveness. `GET /readyz` verifies configured
+Redis/PostgreSQL dependencies and is intended for load-balancer readiness.
+
 ## HTTP contract
 
 The endpoint supports `POST`, `GET`, and `DELETE`:
@@ -77,7 +80,8 @@ idle timeout longer than the heartbeat interval. See
 `deploy/reverse-proxy-streamable-http.conf.example` for an Nginx baseline.
 
 For more than one gateway instance, PostgreSQL is the durable control-plane
-store and Redis is the shared session/event/rate-limit store. Sticky sessions
+store and Redis is the shared session/event/authorization-code/rate-limit/lock
+store. Sticky sessions
 are not a correctness mechanism. The gateway must drain event streams during
 graceful shutdown and enforce per-tenant connection and queue limits.
 The reference process exposes these controls through `CODE_RELAY_SESSION_TTL`,

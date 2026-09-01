@@ -40,16 +40,21 @@ func TestMCPRedisCrossInstanceSSE(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token := strings.Repeat("t", 32)
-	handlerA, err := MCPHTTPHandler(MCPHTTPConfig{Root: t.TempDir(), BearerToken: token, EventStore: producer})
+	registry, err := NewRedisMCPSessionRegistry(producerClient, "code-relay:test:")
 	if err != nil {
 		t.Fatal(err)
 	}
-	handlerB, err := MCPHTTPHandler(MCPHTTPConfig{Root: t.TempDir(), BearerToken: token, EventStore: consumer})
+	token := strings.Repeat("t", 32)
+	handlerA, err := MCPHTTPHandler(MCPHTTPConfig{Root: t.TempDir(), BearerToken: token, EventStore: producer, SessionRegistry: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handlerB, err := MCPHTTPHandler(MCPHTTPConfig{Root: t.TempDir(), BearerToken: token, EventStore: consumer, SessionRegistry: registry})
 	if err != nil {
 		t.Fatal(err)
 	}
 	initReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)))
+	initReq.RemoteAddr = "127.0.0.1:1234"
 	initReq.Header.Set("Authorization", "Bearer "+token)
 	initReq.Header.Set("Content-Type", "application/json")
 	initRes := httptest.NewRecorder()
