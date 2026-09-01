@@ -59,6 +59,71 @@ type githubInstallation struct {
 	RepositorySelection string `json:"repository_selection"`
 }
 
+// FindInstallationForUserRepository resolves the installation owned by the
+// signed-in GitHub user and verifies that it grants this app access to the
+// requested repository. It authenticates with the GitHub App JWT, avoiding the
+// incompatible OAuth App user token used by /user/installations.
+func (c *GitHubAppClient) FindInstallationForUserRepository(ctx context.Context, username, repository string) (int64, error) {
+	if c == nil || c.privateKey == nil {
+		return 0, errors.New("GitHub App signing key is not configured")
+	}
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return 0, errors.New("GitHub username is required")
+	}
+	repository, err := normalizeRepository(repository)
+	if err != nil {
+		return 0, err
+	}
+	jwt, err := c.appJWT()
+	if err != nil {
+		return 0, err
+	}
+	var installation githubInstallation
+	if err := c.requestJSON(ctx, http.MethodGet, "/users/"+url.PathEscape(username)+"/installation", jwt, nil, &installation); err != nil {
+		return 0, err
+	}
+	if installation.ID <= 0 {
+		return 0, errInstallationNotFound
+	}
+	if err := c.verifyInstallationRepository(ctx, installation.ID, repository); err != nil {
+		return 0, err
+	}
+	return installation.ID, nil
+}
+
+// VerifyInstallationForUserRepository checks that installationID belongs to
+// the signed-in user for this App and grants access to repository.
+func (c *GitHubAppClient) VerifyInstallationForUserRepository(ctx context.Context, username string, installationID int64, repository string) error {
+	resolved, err := c.FindInstallationForUserRepository(ctx, username, repository)
+	if err != nil {
+		return err
+	}
+	if resolved != installationID {
+		return errInstallationNotFound
+	}
+	return nil
+}
+
+func (c *GitHubAppClient) verifyInstallationRepository(ctx context.Context, installationID int64, repository string) error {
+	parts := strings.SplitN(repository, "/", 2)
+	if len(parts) != 2 {
+		return errors.New("repository must be owner/name")
+	}
+	token, err := c.InstallationToken(ctx, installationID, []string{parts[1]})
+	if err != nil {
+		return err
+	}
+	var repo githubRepo
+	if err := c.requestJSON(ctx, http.MethodGet, "/repos/"+repository, token.Token, nil, &repo); err != nil {
+		return err
+	}
+	if !strings.EqualFold(repo.FullName, repository) {
+		return errInstallationNotFound
+	}
+	return nil
+}
+
 var errInstallationNotFound = errors.New("GitHub App installation not found for repository")
 
 func NewGitHubAppClient(config GitHubAppConfig) (*GitHubAppClient, error) {

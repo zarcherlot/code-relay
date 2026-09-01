@@ -111,6 +111,7 @@ func main() {
 			IssuerURL:                 issuerURL,
 			ResourceURL:               resourceURL,
 			OAuthScopes:               splitCSV(os.Getenv("CODE_RELAY_OAUTH_SCOPES")),
+			AppClient:                 app,
 			AuthorizationClientID:     strings.TrimSpace(os.Getenv("CODE_RELAY_MCP_OAUTH_CLIENT_ID")),
 			AuthorizationRedirectURLs: splitCSV(os.Getenv("CODE_RELAY_MCP_OAUTH_REDIRECT_URIS")),
 			AuthorizationCodeTTL:      envDuration("CODE_RELAY_OAUTH_CODE_TTL", time.Minute),

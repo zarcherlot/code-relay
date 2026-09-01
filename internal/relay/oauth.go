@@ -55,6 +55,10 @@ type OAuthConfig struct {
 	AuthorizationCodeTTL      time.Duration
 	AuthorizationCodeStore    AuthorizationCodeStore
 	OAuthScopes               []string
+	// AppClient is used to verify GitHub App installations independently from
+	// the GitHub OAuth identity client. GitHub's /user/installations endpoint
+	// requires a user-to-server token for the GitHub App, not an OAuth App token.
+	AppClient *GitHubAppClient
 }
 
 type OAuthSession struct {
@@ -468,7 +472,13 @@ func (s *OAuthService) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	session := OAuthSession{Subject: strconv.FormatInt(user.ID, 10), Login: user.Login, AccessToken: token, Repository: state.Repository, Ref: state.Ref, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(8 * time.Hour).Unix()}
 	if session.Repository != "" {
-		installationID, findErr := NewGitHubAppMembershipClient(s.config.GitHubAPIURL).FindUserInstallationForRepository(r.Context(), token, s.config.AppSlug, session.Repository)
+		var installationID int64
+		var findErr error
+		if s.config.AppClient != nil {
+			installationID, findErr = s.config.AppClient.FindInstallationForUserRepository(r.Context(), user.Login, session.Repository)
+		} else {
+			installationID, findErr = NewGitHubAppMembershipClient(s.config.GitHubAPIURL).FindUserInstallationForRepository(r.Context(), token, s.config.AppSlug, session.Repository)
+		}
 		if findErr == nil {
 			session.InstallationID = installationID
 		} else if !errors.Is(findErr, errInstallationNotFound) {
@@ -556,9 +566,17 @@ func (s *OAuthService) appCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "repository binding is required", http.StatusBadRequest)
 		return
 	}
-	appClient := NewGitHubAppMembershipClient(s.config.GitHubAPIURL)
-	resolvedID, err := appClient.FindUserInstallationForRepository(r.Context(), session.AccessToken, s.config.AppSlug, session.Repository)
-	if err != nil || resolvedID != installationID {
+	if s.config.AppClient != nil {
+		err = s.config.AppClient.VerifyInstallationForUserRepository(r.Context(), session.Login, installationID, session.Repository)
+	} else {
+		appClient := NewGitHubAppMembershipClient(s.config.GitHubAPIURL)
+		var resolvedID int64
+		resolvedID, err = appClient.FindUserInstallationForRepository(r.Context(), session.AccessToken, s.config.AppSlug, session.Repository)
+		if err == nil && resolvedID != installationID {
+			err = errInstallationNotFound
+		}
+	}
+	if err != nil {
 		http.Error(w, "installation is not available to this user", http.StatusForbidden)
 		return
 	}
