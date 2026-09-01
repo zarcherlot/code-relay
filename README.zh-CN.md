@@ -35,28 +35,25 @@ Relay 是基于 MCP 的跨机器开发验证工具。开发机上的人工智能
 
 ## 快速开始
 
-### 方式一：让 AI 客户端自动安装
+### AI 客户端安装
 
-把仓库中的 [AI 客户端安装指南](install.md) 交给支持 MCP 的编码代理，
-让它按指南执行。指南会先预览改动并请求确认，保留已有 MCP 服务，并固定
-安装版本。
+在编码代理中打开[AI 客户端安装指南](install.md)，让它按指南执行。需要复制
+稳定的指南地址时，复制下面的链接：
 
-### 方式二：通过 npm 安装
+```text
+https://raw.githubusercontent.com/zarcherlot/code-relay/main/install.md
+```
+
+指南会先预览改动并请求确认，保留已有 MCP 服务，并固定安装版本。
+
+### npm 备用安装
 
 ```sh
 npx -y code-relay-mcp@latest install --client codex
 ```
 
-按客户端替换为 `claude-code`、`cursor`、`vscode` 或 `generic`。如果需要
-长期使用全局命令：
-
-```sh
-npm install --global code-relay-mcp
-code-relay-mcp install --client codex --yes
-```
-
-需要 Node.js 18+。首次启动时启动器会下载并校验当前平台对应的原生
-发行版二进制，运行时不需要 Go。客户端选项和故障恢复见 [install.md](install.md)。
+按客户端替换为 `claude-code`、`cursor`、`vscode` 或 `generic`。需要 Node.js
+18+；客户端选项和故障恢复见 [install.md](install.md)。
 
 ## 工作原理
 
