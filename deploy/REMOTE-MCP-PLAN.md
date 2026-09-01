@@ -34,11 +34,11 @@ When the GitHub OAuth, GitHub App, and session-secret variables are present,
 operations use the GitHub Contents and Actions APIs and never read or write
 `CODE_RELAY_MCP_ROOT`.
 
-This branch is the transport/session foundation, not the public SaaS launch:
-the reference process-local session store must be replaced by Redis (and the
-durable tenant/audit layer by PostgreSQL), and a standards-compliant OAuth
-authorization-code/token endpoint still needs to be integrated before public
-ChatGPT submission.
+This branch now includes a standards-compliant single-client authorization-code
+and PKCE token exchange. It is still not a public SaaS launch: the reference
+process-local session/code store must be replaced by Redis (and the durable
+tenant/audit layer by PostgreSQL), and client registration plus multi-instance
+key/session rotation must be completed before public ChatGPT submission.
 
 Authentication endpoints are `/auth/github` (OAuth start),
 `/auth/github/callback` (PKCE callback), `/auth/github/install` (start App
@@ -55,8 +55,9 @@ configured for all repositories. If no suitable installation exists, the user
 is sent through the App installation flow for the requested repository; the
 installation ID is never a user-facing input.
 
-OAuth state and browser sessions use short-lived opaque cookies. For SaaS
-production, PostgreSQL is required for durable tenants, members, project
+OAuth state is sealed and short-lived; browser sessions use opaque server-side
+cookies when `CODE_RELAY_SESSION_STORE=memory` (or a future Redis adapter).
+For SaaS production, PostgreSQL is required for durable tenants, members, project
 bindings, runs, and audit references; Redis is required for shared MCP session
 state, event replay, rate limits, and distributed locks. GitHub remains the
 source of truth for repository authorization, branches, runbook commits,

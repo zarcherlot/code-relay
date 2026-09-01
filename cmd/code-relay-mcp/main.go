@@ -86,18 +86,21 @@ func main() {
 			resourceURL = publicBaseURL + "/mcp"
 		}
 		oauthConfig := relay.OAuthConfig{
-			ClientID:       os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID"),
-			ClientSecret:   oauthClientSecret,
-			RedirectURL:    os.Getenv("CODE_RELAY_GITHUB_OAUTH_REDIRECT_URL"),
-			SessionSecret:  os.Getenv("CODE_RELAY_SESSION_SECRET"),
-			AppSlug:        os.Getenv("CODE_RELAY_GITHUB_APP_SLUG"),
-			GitHubOAuthURL: envOr("CODE_RELAY_GITHUB_OAUTH_URL", "https://github.com"),
-			GitHubAPIURL:   apiURL,
-			CookieDomain:   os.Getenv("CODE_RELAY_COOKIE_DOMAIN"),
-			SecureCookies:  envBool("CODE_RELAY_COOKIE_SECURE", true),
-			IssuerURL:      issuerURL,
-			ResourceURL:    resourceURL,
-			OAuthScopes:    splitCSV(os.Getenv("CODE_RELAY_OAUTH_SCOPES")),
+			ClientID:                  os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID"),
+			ClientSecret:              oauthClientSecret,
+			RedirectURL:               os.Getenv("CODE_RELAY_GITHUB_OAUTH_REDIRECT_URL"),
+			SessionSecret:             os.Getenv("CODE_RELAY_SESSION_SECRET"),
+			AppSlug:                   os.Getenv("CODE_RELAY_GITHUB_APP_SLUG"),
+			GitHubOAuthURL:            envOr("CODE_RELAY_GITHUB_OAUTH_URL", "https://github.com"),
+			GitHubAPIURL:              apiURL,
+			CookieDomain:              os.Getenv("CODE_RELAY_COOKIE_DOMAIN"),
+			SecureCookies:             envBool("CODE_RELAY_COOKIE_SECURE", true),
+			IssuerURL:                 issuerURL,
+			ResourceURL:               resourceURL,
+			OAuthScopes:               splitCSV(os.Getenv("CODE_RELAY_OAUTH_SCOPES")),
+			AuthorizationClientID:     strings.TrimSpace(os.Getenv("CODE_RELAY_MCP_OAUTH_CLIENT_ID")),
+			AuthorizationRedirectURLs: splitCSV(os.Getenv("CODE_RELAY_MCP_OAUTH_REDIRECT_URIS")),
+			AuthorizationCodeTTL:      envDuration("CODE_RELAY_OAUTH_CODE_TTL", time.Minute),
 		}
 		// Memory sessions make the hosted single-instance deployment use opaque
 		// browser cookies and bearer credentials. Set CODE_RELAY_SESSION_STORE=cookie

@@ -63,6 +63,12 @@ The gateway validates `Origin` on every browser-capable request, sets an
 explicit allow-list for CORS, and never accepts a caller-provided local
 filesystem root in hosted tool arguments.
 
+When `CODE_RELAY_MCP_OAUTH_CLIENT_ID` and
+`CODE_RELAY_MCP_OAUTH_REDIRECT_URIS` are configured, clients use
+`/oauth/authorize` with S256 PKCE and exchange the one-time code at
+`/oauth/token` for an opaque bearer token. Authorization codes are single-use
+and expire quickly; deployments must use a shared store before scaling out.
+
 ## Operational requirements
 
 The event stream is long-lived. The reverse proxy must disable buffering,

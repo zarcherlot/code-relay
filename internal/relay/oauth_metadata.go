@@ -22,6 +22,8 @@ type authorizationServerMetadata struct {
 	ScopesSupported               []string `json:"scopes_supported,omitempty"`
 	ResponseTypesSupported        []string `json:"response_types_supported,omitempty"`
 	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
+	GrantTypesSupported           []string `json:"grant_types_supported,omitempty"`
+	TokenEndpointAuthMethods      []string `json:"token_endpoint_auth_methods_supported,omitempty"`
 }
 
 func (s *OAuthService) metadata(w http.ResponseWriter, r *http.Request) {
@@ -52,9 +54,17 @@ func (s *OAuthService) metadata(w http.ResponseWriter, r *http.Request) {
 	metadata := authorizationServerMetadata{Issuer: s.config.IssuerURL, ScopesSupported: append([]string(nil), s.config.OAuthScopes...), ResponseTypesSupported: []string{"code"}, CodeChallengeMethodsSupported: []string{"S256"}}
 	base := strings.TrimRight(s.config.IssuerURL, "/")
 	if base != "" {
-		metadata.AuthorizationEndpoint = base + "/auth/github"
-		if endpoint := strings.TrimSpace(s.config.TokenEndpointURL); endpoint != "" {
-			metadata.TokenEndpoint = endpoint
+		if s.config.AuthorizationClientID != "" {
+			metadata.AuthorizationEndpoint = base + "/oauth/authorize"
+			metadata.GrantTypesSupported = []string{"authorization_code"}
+			metadata.TokenEndpointAuthMethods = []string{"none"}
+			if endpoint := strings.TrimSpace(s.config.TokenEndpointURL); endpoint != "" {
+				metadata.TokenEndpoint = endpoint
+			} else {
+				metadata.TokenEndpoint = base + "/oauth/token"
+			}
+		} else {
+			metadata.AuthorizationEndpoint = base + "/auth/github"
 		}
 	}
 	_ = json.NewEncoder(w).Encode(metadata)

@@ -36,6 +36,19 @@ func TestOAuthMetadata(t *testing.T) {
 	}
 }
 
+func TestOAuthAuthorizationServerMetadataForMCPClient(t *testing.T) {
+	service, err := NewOAuthService(OAuthConfig{ClientID: "c", ClientSecret: "s", RedirectURL: "https://relay.example/auth/github/callback", SessionSecret: strings.Repeat("s", 32), AppSlug: "code-relay", IssuerURL: "https://relay.example", AuthorizationClientID: "mcp-client"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := httptest.NewRecorder()
+	service.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil))
+	body := res.Body.String()
+	if !strings.Contains(body, `"authorization_endpoint":"https://relay.example/oauth/authorize"`) || !strings.Contains(body, `"token_endpoint":"https://relay.example/oauth/token"`) || !strings.Contains(body, `"grant_types_supported"`) {
+		t.Fatalf("unexpected MCP OAuth metadata: %s", body)
+	}
+}
+
 func TestOAuthServiceOpaqueSession(t *testing.T) {
 	store := NewMemorySessionStore()
 	service, err := NewOAuthService(OAuthConfig{ClientID: "c", ClientSecret: "s", RedirectURL: "https://relay.example/auth/github/callback", SessionSecret: strings.Repeat("s", 32), AppSlug: "code-relay", SessionStore: store})

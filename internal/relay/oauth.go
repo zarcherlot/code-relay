@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -44,12 +45,15 @@ type OAuthConfig struct {
 	SecureCookies  bool
 	// SessionStore enables opaque, server-side sessions. When nil, encrypted
 	// cookies remain the backwards-compatible default.
-	SessionStore           SessionStore
-	IssuerURL              string
-	ResourceURL            string
-	AuthorizationServerURL string
-	TokenEndpointURL       string
-	OAuthScopes            []string
+	SessionStore              SessionStore
+	IssuerURL                 string
+	ResourceURL               string
+	AuthorizationServerURL    string
+	TokenEndpointURL          string
+	AuthorizationClientID     string
+	AuthorizationRedirectURLs []string
+	AuthorizationCodeTTL      time.Duration
+	OAuthScopes               []string
 }
 
 type OAuthSession struct {
@@ -64,12 +68,24 @@ type OAuthSession struct {
 }
 
 type oauthState struct {
-	State      string `json:"state"`
-	Verifier   string `json:"verifier"`
-	Next       string `json:"next"`
-	Repository string `json:"repository,omitempty"`
-	Ref        string `json:"ref,omitempty"`
-	Expires    int64  `json:"exp"`
+	State         string `json:"state"`
+	Verifier      string `json:"verifier"`
+	Next          string `json:"next"`
+	Repository    string `json:"repository,omitempty"`
+	Ref           string `json:"ref,omitempty"`
+	ClientID      string `json:"client_id,omitempty"`
+	RedirectURI   string `json:"redirect_uri,omitempty"`
+	ClientState   string `json:"client_state,omitempty"`
+	CodeChallenge string `json:"code_challenge,omitempty"`
+	Expires       int64  `json:"exp"`
+}
+
+type oauthAuthorizationCode struct {
+	Session     OAuthSession
+	ClientID    string
+	RedirectURI string
+	Challenge   string
+	ExpiresAt   time.Time
 }
 
 type githubUser struct {
@@ -90,6 +106,8 @@ type OAuthService struct {
 	client *http.Client
 	key    []byte
 	store  SessionStore
+	codeMu sync.Mutex
+	codes  map[string]oauthAuthorizationCode
 }
 
 // IssueAccessToken creates an opaque bearer credential backed by the
@@ -123,6 +141,13 @@ func NewOAuthService(config OAuthConfig) (*OAuthService, error) {
 	config.ResourceURL = strings.TrimSpace(config.ResourceURL)
 	config.AuthorizationServerURL = strings.TrimSpace(config.AuthorizationServerURL)
 	config.TokenEndpointURL = strings.TrimSpace(config.TokenEndpointURL)
+	config.AuthorizationClientID = strings.TrimSpace(config.AuthorizationClientID)
+	for i, redirect := range config.AuthorizationRedirectURLs {
+		config.AuthorizationRedirectURLs[i] = strings.TrimSpace(redirect)
+	}
+	if config.AuthorizationCodeTTL <= 0 {
+		config.AuthorizationCodeTTL = 60 * time.Second
+	}
 	if config.GitHubOAuthURL == "" {
 		config.GitHubOAuthURL = defaultGitHubOAuthURL
 	}
@@ -145,7 +170,7 @@ func NewOAuthService(config OAuthConfig) (*OAuthService, error) {
 		return nil, errors.New("GitHub App slug is required for installation flow")
 	}
 	key := sha256.Sum256([]byte(config.SessionSecret))
-	return &OAuthService{config: config, client: &http.Client{Timeout: 15 * time.Second}, key: key[:], store: config.SessionStore}, nil
+	return &OAuthService{config: config, client: &http.Client{Timeout: 15 * time.Second}, key: key[:], store: config.SessionStore, codes: make(map[string]oauthAuthorizationCode)}, nil
 }
 
 // ServeHTTP serves the OAuth endpoints.  It is intended to be mounted under
@@ -166,6 +191,12 @@ func (s *OAuthService) ServeHTTP(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	case "/auth/logout":
 		s.logout(w, r)
+		return true
+	case "/oauth/authorize":
+		s.authorize(w, r)
+		return true
+	case "/oauth/token":
+		s.token(w, r)
 		return true
 	case "/.well-known/oauth-protected-resource", "/mcp/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server":
 		s.metadata(w, r)
@@ -204,6 +235,125 @@ func (s *OAuthService) Authenticate(r *http.Request) (OAuthSession, error) {
 		return OAuthSession{}, errors.New("invalid session")
 	}
 	return validateOAuthSession(session)
+}
+
+// authorize starts the MCP OAuth authorization-code flow. GitHub remains the
+// identity provider; this endpoint adds the MCP client's redirect and PKCE
+// binding around that provider login.
+func (s *OAuthService) authorize(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	clientID := strings.TrimSpace(r.URL.Query().Get("client_id"))
+	redirectURI := strings.TrimSpace(r.URL.Query().Get("redirect_uri"))
+	if s.config.AuthorizationClientID == "" || clientID != s.config.AuthorizationClientID || !s.allowedRedirectURI(redirectURI) {
+		http.Error(w, "unauthorized OAuth client", http.StatusBadRequest)
+		return
+	}
+	if r.URL.Query().Get("response_type") != "code" || r.URL.Query().Get("code_challenge_method") != "S256" {
+		http.Error(w, "authorization code with S256 PKCE is required", http.StatusBadRequest)
+		return
+	}
+	challenge := strings.TrimSpace(r.URL.Query().Get("code_challenge"))
+	if challenge == "" || len(challenge) > 256 {
+		http.Error(w, "code_challenge is required", http.StatusBadRequest)
+		return
+	}
+	state := randomToken(32)
+	verifier := randomToken(48)
+	payload := oauthState{State: state, Verifier: verifier, ClientID: clientID, RedirectURI: redirectURI, ClientState: r.URL.Query().Get("state"), CodeChallenge: challenge, Expires: time.Now().Add(10 * time.Minute).Unix()}
+	value, err := s.seal(payload)
+	if err != nil {
+		http.Error(w, "oauth state unavailable", http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(w, s.cookie(s.config.StateCookie, value, 600))
+	query := url.Values{}
+	query.Set("client_id", s.config.ClientID)
+	query.Set("redirect_uri", s.config.RedirectURL)
+	query.Set("response_type", "code")
+	query.Set("scope", "read:user")
+	query.Set("state", state)
+	query.Set("code_challenge", pkceChallenge(verifier))
+	query.Set("code_challenge_method", "S256")
+	http.Redirect(w, r, strings.TrimRight(s.config.GitHubOAuthURL, "/")+"/login/oauth/authorize?"+query.Encode(), http.StatusFound)
+}
+
+func (s *OAuthService) allowedRedirectURI(value string) bool {
+	for _, allowed := range s.config.AuthorizationRedirectURLs {
+		if value != "" && value == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *OAuthService) token(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if s.store == nil {
+		http.Error(w, "OAuth token service is not configured", http.StatusNotImplemented)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.oauthTokenError(w, http.StatusBadRequest, "invalid_request")
+		return
+	}
+	if r.Form.Get("grant_type") != "authorization_code" {
+		s.oauthTokenError(w, http.StatusBadRequest, "unsupported_grant_type")
+		return
+	}
+	clientID := strings.TrimSpace(r.Form.Get("client_id"))
+	redirectURI := strings.TrimSpace(r.Form.Get("redirect_uri"))
+	code := strings.TrimSpace(r.Form.Get("code"))
+	verifier := strings.TrimSpace(r.Form.Get("code_verifier"))
+	if clientID == "" || code == "" || verifier == "" || !s.allowedRedirectURI(redirectURI) || clientID != s.config.AuthorizationClientID {
+		s.oauthTokenError(w, http.StatusBadRequest, "invalid_grant")
+		return
+	}
+	s.codeMu.Lock()
+	authCode, ok := s.codes[code]
+	if ok {
+		delete(s.codes, code)
+	}
+	s.codeMu.Unlock()
+	if !ok || time.Now().After(authCode.ExpiresAt) || authCode.ClientID != clientID || authCode.RedirectURI != redirectURI || !constantTimeEqual(authCode.Challenge, pkceChallenge(verifier)) {
+		s.oauthTokenError(w, http.StatusBadRequest, "invalid_grant")
+		return
+	}
+	ttl := time.Until(time.Unix(authCode.Session.ExpiresAt, 0))
+	accessToken, err := s.IssueAccessToken(r.Context(), authCode.Session, ttl)
+	if err != nil {
+		s.oauthTokenError(w, http.StatusInternalServerError, "server_error")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{"access_token": accessToken, "token_type": "Bearer", "expires_in": max(1, int(ttl/time.Second)), "scope": strings.Join(s.config.OAuthScopes, " ")})
+}
+
+func (s *OAuthService) oauthTokenError(w http.ResponseWriter, status int, code string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": code})
+}
+
+func (s *OAuthService) issueAuthorizationCode(session OAuthSession, state oauthState) (string, error) {
+	code := randomToken(32)
+	s.codeMu.Lock()
+	now := time.Now()
+	for existing, record := range s.codes {
+		if !now.Before(record.ExpiresAt) {
+			delete(s.codes, existing)
+		}
+	}
+	s.codes[code] = oauthAuthorizationCode{Session: session, ClientID: state.ClientID, RedirectURI: state.RedirectURI, Challenge: state.CodeChallenge, ExpiresAt: time.Now().Add(s.config.AuthorizationCodeTTL)}
+	s.codeMu.Unlock()
+	return code, nil
 }
 
 func validateOAuthSession(session OAuthSession) (OAuthSession, error) {
@@ -293,6 +443,22 @@ func (s *OAuthService) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, s.cookie(s.config.StateCookie, "", -1))
+	if state.ClientID != "" {
+		authorizationCode, codeErr := s.issueAuthorizationCode(session, state)
+		if codeErr != nil {
+			http.Error(w, "authorization code unavailable", http.StatusInternalServerError)
+			return
+		}
+		redirect, _ := url.Parse(state.RedirectURI)
+		query := redirect.Query()
+		query.Set("code", authorizationCode)
+		if state.ClientState != "" {
+			query.Set("state", state.ClientState)
+		}
+		redirect.RawQuery = query.Encode()
+		http.Redirect(w, r, redirect.String(), http.StatusFound)
+		return
+	}
 	if session.Repository != "" && session.InstallationID <= 0 {
 		installURL := "/auth/github/install?next=" + url.QueryEscape(state.Next)
 		http.Redirect(w, r, installURL, http.StatusFound)
