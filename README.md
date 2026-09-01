@@ -12,26 +12,13 @@
   构建，验证，接力。
 </h2>
 
-<p align="center">
-  <img src="assets/overview.png" alt="Code Relay workflow" width="836">
-</p>
-
 > **Code Relay lets your coding agent develop on one machine and prove the result on another.**
 
-Relay is an MCP-based coding-agent integration for cross-machine development and verification. It is optimized for the ChatGPT/Codex plugin surface, while the same MCP server also works with Claude Code, Cursor, VS Code, and other MCP-capable coding agents. AI on the **Dev Host** implements the request; the **Target Host** runs the real validation; a structured receipt comes back and can trigger the next repair iteration.
-
-## How it works
-
-```text
-Describe the change in your coding agent
-        ↓
-Dev Host → Relay runbook → Target Host
-        ↓                 ↓
-     develop          checkpoint in the real environment
-        ←────── Receipt / evidence ──────
-```
-
-Relay binds every runbook to a repository, branch, and source commit. The Target Host acts as the checkpoint, verifies the exact code you intended to ship, and returns an auditable receipt for passed, failed, or blocked results.
+Relay is an MCP-based coding-agent integration for cross-machine development and
+verification. AI on the Dev Host implements the request; the Target Host runs
+the real validation; a structured receipt comes back to guide the next repair
+iteration. It works with Codex, Claude Code, Cursor, VS Code, and other
+MCP-capable coding agents.
 
 ## When Relay is useful
 
@@ -40,90 +27,53 @@ Relay binds every runbook to a repository, branch, and source commit. The Target
 - **Real integrations** — exercise payment callbacks, queues, databases, browsers, or internal services that cannot be reproduced locally.
 - **AI-driven iteration** — return concrete expected/actual results so the coding agent can repair, republish, and retry.
 
+## What Relay provides
+
+- Branch-scoped project binding and short-lived join links.
+- Exact source-commit verification in an isolated worktree.
+- Checkpoint execution through a `code-relay-checkpoint` GitHub Actions self-hosted runner.
+- Safe, allowlisted validation commands with bounded output and timeouts.
+- Structured `receipt.json` and human-readable receipts for passed, failed, and blocked runs.
+
 ## Quick start
 
-1. Install **Code Relay** from the ChatGPT/Codex plugin UI, or configure the MCP server in another coding agent.
-2. On the Dev Host, open a project and say:
+### Option 1: Let your AI client install it
 
-   > Enable Code Relay for the current project and branch, then generate a Target Host join link.
+Give your MCP-capable coding agent the repository's [AI-client installation guide](install.md)
+and ask it to follow the instructions. The guide previews changes, asks for
+confirmation, preserves existing MCP servers, and pins the installed version.
 
-3. On the Target Host, install the same plugin or MCP server and paste the link into the coding agent.
-4. The Target Host joins the approved repository and branch as its checkpoint, executes runbooks on the `code-relay-checkpoint` GitHub Actions runner, and publishes a receipt.
-
-Users do not need to install Python, Go, or a separate Relay runtime for the packaged plugin. See [USER_GUIDE.md](USER_GUIDE.md) for the complete journey and recovery steps.
-
-### Install through npm (any MCP client)
-
-Code Relay is also distributed as `code-relay-mcp`. Any MCP-capable coding agent can follow
-[install.md](install.md), or you can preview and apply the client-specific
-installer directly:
+### Option 2: Install with npm
 
 ```sh
 npx -y code-relay-mcp@latest install --client codex
-npx -y code-relay-mcp@latest install --client codex --yes
 ```
 
-For a persistent command, install it globally first:
+Replace `codex` with `claude-code`, `cursor`, `vscode`, or `generic` as needed.
+For a persistent command:
 
 ```sh
 npm install --global code-relay-mcp
 code-relay-mcp install --client codex --yes
 ```
 
-Replace `codex` with `claude-code`, `cursor`, `vscode`, or `generic` as needed.
-Node.js 18+ is required. The npm launcher downloads the matching native release
-binary on first use, verifies it against `SHA256SUMS`, and caches it locally; Go
-is not required. The npm distribution exposes the MCP tools. The ChatGPT/Codex
-plugin package additionally supplies the `$code-relay:relay` and
-`$code-relay:checkpoint` Skills; other clients can use the same MCP tools directly.
+Node.js 18+ is required. The launcher downloads and verifies the matching
+native release binary on first use; Go is not required at runtime. For client
+options and recovery steps, see [install.md](install.md).
 
-### Install from this repository (local desktop)
+## How it works
 
-The repository includes a repo-scoped marketplace at
-`.agents/plugins/marketplace.json`. To install from a source checkout, build the
-platform package once from the repository root:
+<p align="center">
+  <img src="assets/overview.png" alt="Dev Host sends a runbook through Code Relay to a Target Host; the Target Host runs a checkpoint and returns a receipt with evidence" width="836">
+</p>
 
-```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass `
-  -File .\scripts\package-plugin.ps1 `
-  -Output .\dist\plugin
-```
+Accessible summary: the Dev Host sends a repository- and branch-bound runbook
+through Relay; the Target Host checks the exact source commit in its real
+environment and returns a Receipt recording the Checkpoint result.
 
-This creates the native agent and packaged `.mcp.json` under `dist/plugin`. Go is
-needed only for this source build; the installed package does not need Go at
-runtime. If `dist/plugin` was supplied as a prebuilt package, skip the command.
-
-Restart the ChatGPT desktop app, open `Plugins Directory`, choose
-`Code Relay (Local)` → `Code Relay` → `Install`, and start a new chat to test it.
-Keep the default `dist/plugin` output so the checked-in marketplace path remains
-valid. No manual marketplace JSON or `codex plugin marketplace add` command is
-required. For a fresh machine, see the [local desktop install runbook](deploy/LOCAL-INSTALL-RUNBOOK.md)
-for cloning the repository and installing Git, PowerShell 7, and Go 1.26+ first.
-
-## Core capabilities
-
-- Branch-scoped project binding and short-lived join links.
-- Exact source-commit verification in an isolated worktree.
-- Checkpoint execution through a `code-relay-checkpoint` GitHub Actions self-hosted runner.
-- Safe, allowlisted validation commands with bounded output and timeouts.
-- Structured `receipt.json` plus a human-readable receipt for pass, fail, and blocked runs.
-
-## Development
-
-The repository targets Go 1.26+:
-
-```powershell
-go test ./...
-go vet ./...
-go build ./cmd/code-relay-agent
-npm ci
-npm test
-npm run verify
-./scripts/validate-contracts.ps1
-./scripts/smoke-e2e.ps1
-```
-
-Build the bundled agent for the current platform with `./scripts/build-agent.ps1`. The CLI is a developer/CI fallback; normal users install through their coding agent's MCP/plugin mechanism.
+Every runbook is bound to a repository, branch, and source commit. The Target
+Host acts as the Checkpoint, and the resulting receipt records passed, failed,
+or blocked verification for the next iteration.
 
 ## Documentation
 
