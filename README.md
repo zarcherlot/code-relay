@@ -4,12 +4,11 @@
 </h1>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.zh-CN.md">中文版</a>
+  <a href="README.md">English</a> · <a href="README.zh-CN.md">Chinese</a>
 </p>
 
 <h2 align="center">
-  Build. Prove. Relay.<br>
-  构建，验证，接力。
+  Build. Prove. Relay.
 </h2>
 
 > **Code Relay lets your coding agent develop on one machine and prove the result on another.**
@@ -37,29 +36,27 @@ MCP-capable coding agents.
 
 ## Quick start
 
-### Option 1: Let your AI client install it
+### AI client installation
 
-Give your MCP-capable coding agent the repository's [AI-client installation guide](install.md)
-and ask it to follow the instructions. The guide previews changes, asks for
-confirmation, preserves existing MCP servers, and pins the installed version.
+Open the [AI-client installation guide](install.md) in your coding agent and
+ask it to follow the instructions. To copy the stable guide URL:
 
-### Option 2: Install with npm
+```text
+https://raw.githubusercontent.com/zarcherlot/code-relay/main/install.md
+```
+
+The guide previews changes, asks for confirmation, preserves existing MCP
+servers, and pins the installed version.
+
+### npm fallback
 
 ```sh
 npx -y code-relay-mcp@latest install --client codex
 ```
 
 Replace `codex` with `claude-code`, `cursor`, `vscode`, or `generic` as needed.
-For a persistent command:
-
-```sh
-npm install --global code-relay-mcp
-code-relay-mcp install --client codex --yes
-```
-
-Node.js 18+ is required. The launcher downloads and verifies the matching
-native release binary on first use; Go is not required at runtime. For client
-options and recovery steps, see [install.md](install.md).
+Node.js 18+ is required. For client options and recovery steps, see
+[install.md](install.md).
 
 ## How it works
 
@@ -77,7 +74,7 @@ or blocked verification for the next iteration.
 
 ## Documentation
 
-- [中文 README](README.zh-CN.md)
+- [Chinese README](README.zh-CN.md)
 - [User guide](USER_GUIDE.md)
 - [AI-client installation guide](install.md)
 - [Local desktop install runbook](deploy/LOCAL-INSTALL-RUNBOOK.md)
