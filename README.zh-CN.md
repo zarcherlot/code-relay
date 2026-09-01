@@ -67,6 +67,13 @@ npx -y code-relay-mcp@latest install --client codex
 npx -y code-relay-mcp@latest install --client codex --yes
 ```
 
+需要保留全局命令时，也可以先安装 npm 包：
+
+```sh
+npm install --global code-relay-mcp
+code-relay-mcp install --client codex --yes
+```
+
 可将 `codex` 替换为 `claude-code`、`cursor`、`vscode` 或 `generic`。需要
 Node.js 18+；首次启动时，npm launcher 会下载当前平台对应的原生 Release
 二进制，使用 `SHA256SUMS` 校验后写入本机缓存，不需要 Go。npm 发行包提供

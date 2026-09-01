@@ -63,6 +63,13 @@ npx -y code-relay-mcp@latest install --client codex
 npx -y code-relay-mcp@latest install --client codex --yes
 ```
 
+For a persistent command, install it globally first:
+
+```sh
+npm install --global code-relay-mcp
+code-relay-mcp install --client codex --yes
+```
+
 Replace `codex` with `claude-code`, `cursor`, `vscode`, or `generic` as needed.
 Node.js 18+ is required. The npm launcher downloads the matching native release
 binary on first use, verifies it against `SHA256SUMS`, and caches it locally; Go

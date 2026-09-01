@@ -11,9 +11,13 @@
   },
   "files": [
     "npm/",
+    "assets/icon.png",
+    "assets/overview.png",
     "install.md",
     "README.md",
     "README.zh-CN.md",
+    "USER_GUIDE.md",
+    "SECURITY.md",
     "LICENSE"
   ],
   "engines": {
