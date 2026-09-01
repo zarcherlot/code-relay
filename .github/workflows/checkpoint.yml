@@ -51,6 +51,19 @@ jobs:
           $env:GOARCH = $goarch
           go build -trimpath -ldflags "-s -w" -o "dist/$name" ./cmd/code-relay-agent
           "CODE_RELAY_AGENT=$PWD/dist/$name" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Fetch runbook source commits
+        shell: pwsh
+        run: |
+          $sources = Get-ChildItem -Path runbooks -Recurse -Filter runbook.md -File | ForEach-Object {
+            Select-String -Path $_.FullName -Pattern '^- source_commit:\s*([0-9a-fA-F]{7,64})\s*$' | ForEach-Object { $_.Matches[0].Groups[1].Value }
+          } | Sort-Object -Unique
+          foreach ($source in $sources) {
+            git cat-file -e "$source^{commit}" 2>$null
+            if ($LASTEXITCODE -ne 0) {
+              git fetch --no-tags --depth=1 origin $source
+              if ($LASTEXITCODE -ne 0) { throw "failed to fetch source commit $source" }
+            }
+          }
       - name: Execute pending runbooks
         shell: pwsh
         run: |
