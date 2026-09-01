@@ -74,3 +74,6 @@ For more than one gateway instance, PostgreSQL is the durable control-plane
 store and Redis is the shared session/event/rate-limit store. Sticky sessions
 are not a correctness mechanism. The gateway must drain event streams during
 graceful shutdown and enforce per-tenant connection and queue limits.
+The reference process exposes these controls through `CODE_RELAY_SESSION_TTL`,
+`CODE_RELAY_SSE_HEARTBEAT_SECONDS`, `CODE_RELAY_SSE_MAX_CONNECTIONS`,
+`CODE_RELAY_SSE_MAX_QUEUE`, and `CODE_RELAY_SSE_EVENT_HISTORY`.

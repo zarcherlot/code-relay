@@ -76,7 +76,7 @@ foreach ($permission in @("contents", "actions", "metadata")) {
 $remoteEnv = Join-Path $root "deploy/remote-mcp.env.example"
 if (-not (Test-Path -LiteralPath $remoteEnv -PathType Leaf)) { throw "Missing hosted MCP environment example" }
 $remoteEnvText = Get-Content -LiteralPath $remoteEnv -Raw
-foreach ($name in @("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID", "CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET", "CODE_RELAY_SESSION_SECRET", "CODE_RELAY_GITHUB_APP_ID", "CODE_RELAY_GITHUB_APP_PRIVATE_KEY_FILE", "CODE_RELAY_PUBLIC_BASE_URL", "CODE_RELAY_OAUTH_RESOURCE_URL", "CODE_RELAY_OAUTH_ISSUER_URL", "CODE_RELAY_DATABASE_URL", "CODE_RELAY_REDIS_URL", "CODE_RELAY_SSE_HEARTBEAT_SECONDS", "CODE_RELAY_SSE_MAX_CONNECTIONS")) {
+foreach ($name in @("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID", "CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET", "CODE_RELAY_SESSION_SECRET", "CODE_RELAY_GITHUB_APP_ID", "CODE_RELAY_GITHUB_APP_PRIVATE_KEY_FILE", "CODE_RELAY_PUBLIC_BASE_URL", "CODE_RELAY_OAUTH_RESOURCE_URL", "CODE_RELAY_OAUTH_ISSUER_URL", "CODE_RELAY_DATABASE_URL", "CODE_RELAY_REDIS_URL", "CODE_RELAY_SSE_HEARTBEAT_SECONDS", "CODE_RELAY_SSE_MAX_CONNECTIONS", "CODE_RELAY_SSE_MAX_QUEUE", "CODE_RELAY_SSE_EVENT_HISTORY")) {
   if ($remoteEnvText -notmatch [regex]::Escape($name)) { throw "Hosted MCP environment example is missing $name" }
 }
 $streamableContract = Read-Json "deploy/streamable-http-contract.json"

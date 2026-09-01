@@ -35,13 +35,18 @@ func main() {
 		}
 	}
 	config := relay.MCPHTTPConfig{
-		Root:            absRoot,
-		BearerToken:     os.Getenv("CODE_RELAY_MCP_TOKEN"),
-		DomainChallenge: os.Getenv("OPENAI_APPS_CHALLENGE"),
-		RatePerMinute:   envInt("CODE_RELAY_MCP_RATE_PER_MINUTE", 60),
-		MaxConcurrent:   envInt("CODE_RELAY_MCP_MAX_CONCURRENT", 4),
-		RequestTimeout:  time.Duration(envInt("CODE_RELAY_MCP_TIMEOUT_SECONDS", 60)) * time.Second,
-		AllowedOrigins:  splitCSV(os.Getenv("CODE_RELAY_CORS_ALLOWED_ORIGINS")),
+		Root:              absRoot,
+		BearerToken:       os.Getenv("CODE_RELAY_MCP_TOKEN"),
+		DomainChallenge:   os.Getenv("OPENAI_APPS_CHALLENGE"),
+		RatePerMinute:     envInt("CODE_RELAY_MCP_RATE_PER_MINUTE", 60),
+		MaxConcurrent:     envInt("CODE_RELAY_MCP_MAX_CONCURRENT", 4),
+		RequestTimeout:    time.Duration(envInt("CODE_RELAY_MCP_TIMEOUT_SECONDS", 60)) * time.Second,
+		AllowedOrigins:    splitCSV(os.Getenv("CODE_RELAY_CORS_ALLOWED_ORIGINS")),
+		SessionTTL:        envDuration("CODE_RELAY_SESSION_TTL", 30*time.Minute),
+		SSEHeartbeat:      time.Duration(envInt("CODE_RELAY_SSE_HEARTBEAT_SECONDS", 15)) * time.Second,
+		SSEMaxQueue:       envInt("CODE_RELAY_SSE_MAX_QUEUE", 32),
+		SSEEventHistory:   envInt("CODE_RELAY_SSE_EVENT_HISTORY", 256),
+		MaxSSEConnections: envInt("CODE_RELAY_SSE_MAX_CONNECTIONS", 1000),
 	}
 	remoteEnabled := strings.TrimSpace(os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID")) != ""
 	if remoteEnabled {
@@ -145,6 +150,14 @@ func envOr(name, fallback string) string {
 func envInt(name string, fallback int) int {
 	value := strings.TrimSpace(os.Getenv(name))
 	if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 {
+		return parsed
+	}
+	return fallback
+}
+
+func envDuration(name string, fallback time.Duration) time.Duration {
+	value := strings.TrimSpace(os.Getenv(name))
+	if parsed, err := time.ParseDuration(value); err == nil && parsed > 0 {
 		return parsed
 	}
 	return fallback

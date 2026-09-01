@@ -29,18 +29,23 @@ const (
 // hosted mode uses OAuthSession plus RemoteBackend and never accepts local
 // filesystem paths through the MCP payload.
 type MCPHTTPConfig struct {
-	Root            string
-	BearerToken     string
-	OAuth           *OAuthService
-	RemoteBackend   RemoteMCPBackend
-	AuditLogger     *slog.Logger
-	DomainChallenge string
-	MaxBodyBytes    int64
-	RatePerMinute   int
-	MaxConcurrent   int
-	AllowedTools    map[string]bool
-	AllowedOrigins  []string
-	RequestTimeout  time.Duration
+	Root              string
+	BearerToken       string
+	OAuth             *OAuthService
+	RemoteBackend     RemoteMCPBackend
+	AuditLogger       *slog.Logger
+	DomainChallenge   string
+	MaxBodyBytes      int64
+	RatePerMinute     int
+	MaxConcurrent     int
+	AllowedTools      map[string]bool
+	AllowedOrigins    []string
+	RequestTimeout    time.Duration
+	SessionTTL        time.Duration
+	SSEHeartbeat      time.Duration
+	SSEMaxQueue       int
+	SSEEventHistory   int
+	MaxSSEConnections int
 }
 
 // MCPHTTPHandler returns an authenticated HTTP handler for the MCP endpoint.
@@ -71,6 +76,21 @@ func MCPHTTPHandler(config MCPHTTPConfig) (http.Handler, error) {
 	}
 	if config.RequestTimeout <= 0 {
 		config.RequestTimeout = 60 * time.Second
+	}
+	if config.SessionTTL <= 0 {
+		config.SessionTTL = 30 * time.Minute
+	}
+	if config.SSEHeartbeat <= 0 {
+		config.SSEHeartbeat = 15 * time.Second
+	}
+	if config.SSEMaxQueue <= 0 {
+		config.SSEMaxQueue = 32
+	}
+	if config.SSEEventHistory <= 0 {
+		config.SSEEventHistory = 256
+	}
+	if config.MaxSSEConnections <= 0 {
+		config.MaxSSEConnections = 1000
 	}
 	if config.AllowedTools == nil {
 		config.AllowedTools = defaultRemoteMCPTools()
@@ -104,11 +124,12 @@ var remoteToolNames = map[string]struct{}{
 }
 
 type mcpHTTPHandler struct {
-	config    MCPHTTPConfig
-	mu        sync.Mutex
-	clients   map[string][]time.Time
-	sessions  map[string]*mcpHTTPSession
-	semaphore chan struct{}
+	config         MCPHTTPConfig
+	mu             sync.Mutex
+	clients        map[string][]time.Time
+	sessions       map[string]*mcpHTTPSession
+	sseConnections int
+	semaphore      chan struct{}
 }
 
 type mcpSSEEvent struct {
@@ -130,8 +151,6 @@ type mcpHTTPSession struct {
 const (
 	mcpProtocolVersion = "2024-11-05"
 	mcpCurrentProtocol = "2025-06-18"
-	mcpSSEHeartbeat    = 15 * time.Second
-	mcpSSEEventHistory = 256
 )
 
 func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -341,8 +360,8 @@ func (h *mcpHTTPHandler) publishSessionEvent(id string, value map[string]any) {
 	session.nextEventID++
 	event := mcpSSEEvent{id: fmt.Sprintf("%016x", session.nextEventID), data: data}
 	session.events = append(session.events, event)
-	if len(session.events) > mcpSSEEventHistory {
-		session.events = session.events[len(session.events)-mcpSSEEventHistory:]
+	if len(session.events) > h.config.SSEEventHistory {
+		session.events = session.events[len(session.events)-h.config.SSEEventHistory:]
 	}
 	for subscriber := range session.subscribers {
 		select {
@@ -422,7 +441,7 @@ func (h *mcpHTTPHandler) newSession(owner string) string {
 	for {
 		id := newMCPSessionID()
 		if _, exists := h.sessions[id]; !exists {
-			h.sessions[id] = &mcpHTTPSession{id: id, owner: owner, expiresAt: time.Now().Add(30 * time.Minute), subscribers: make(map[chan mcpSSEEvent]struct{})}
+			h.sessions[id] = &mcpHTTPSession{id: id, owner: owner, expiresAt: time.Now().Add(h.config.SessionTTL), subscribers: make(map[chan mcpSSEEvent]struct{})}
 			return id
 		}
 	}
@@ -505,7 +524,20 @@ func (h *mcpHTTPHandler) sessionSSE(w http.ResponseWriter, r *http.Request, id, 
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("MCP-Protocol-Version", mcpCurrentProtocol)
-	sub := make(chan mcpSSEEvent, 32)
+	h.mu.Lock()
+	if h.config.MaxSSEConnections > 0 && h.sseConnections >= h.config.MaxSSEConnections {
+		h.mu.Unlock()
+		http.Error(w, "SSE connection limit reached", http.StatusTooManyRequests)
+		return
+	}
+	h.sseConnections++
+	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		h.sseConnections--
+		h.mu.Unlock()
+	}()
+	sub := make(chan mcpSSEEvent, h.config.SSEMaxQueue)
 	session.mu.Lock()
 	if session.closed {
 		session.mu.Unlock()
@@ -525,7 +557,7 @@ func (h *mcpHTTPHandler) sessionSSE(w http.ResponseWriter, r *http.Request, id, 
 		delete(session.subscribers, sub)
 		session.mu.Unlock()
 	}()
-	ticker := time.NewTicker(mcpSSEHeartbeat)
+	ticker := time.NewTicker(h.config.SSEHeartbeat)
 	defer ticker.Stop()
 	for {
 		select {
