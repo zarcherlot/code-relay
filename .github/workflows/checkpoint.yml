@@ -67,7 +67,12 @@ jobs:
               # GitHub does not advertise arbitrary SHA wants on private
               # repositories. Deepen the checked-out branch instead, then
               # verify that the referenced commit is available locally.
-              git fetch --no-tags origin "$env:GITHUB_REF_NAME"
+              $shallow = (git rev-parse --is-shallow-repository 2>$null).Trim()
+              if ($shallow -eq "true") {
+                git fetch --no-tags --unshallow origin "$env:GITHUB_REF_NAME"
+              } else {
+                git fetch --no-tags origin "$env:GITHUB_REF_NAME"
+              }
               if ($LASTEXITCODE -ne 0) { throw "failed to fetch branch history for source commit $source" }
               git cat-file -e "$source^{commit}" 2>$null
               if ($LASTEXITCODE -ne 0) { throw "source commit $source is not reachable from $env:GITHUB_REF_NAME" }
