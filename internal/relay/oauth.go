@@ -256,7 +256,7 @@ func (s *OAuthService) authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	challenge := strings.TrimSpace(r.URL.Query().Get("code_challenge"))
-	if challenge == "" || len(challenge) > 256 {
+	if !validPKCEChallenge(challenge) {
 		http.Error(w, "code_challenge is required", http.StatusBadRequest)
 		return
 	}
@@ -278,6 +278,18 @@ func (s *OAuthService) authorize(w http.ResponseWriter, r *http.Request) {
 	query.Set("code_challenge", pkceChallenge(verifier))
 	query.Set("code_challenge_method", "S256")
 	http.Redirect(w, r, strings.TrimRight(s.config.GitHubOAuthURL, "/")+"/login/oauth/authorize?"+query.Encode(), http.StatusFound)
+}
+
+func validPKCEChallenge(value string) bool {
+	if len(value) < 43 || len(value) > 128 {
+		return false
+	}
+	for _, char := range value {
+		if (char < 'A' || char > 'Z') && (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '.' && char != '_' && char != '-' && char != '~' {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *OAuthService) allowedRedirectURI(value string) bool {

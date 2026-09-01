@@ -93,7 +93,7 @@ func TestOAuthAuthorizeStartsGitHubPKCE(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=mcp-client&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&state=abc&code_challenge=challenge&code_challenge_method=S256", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth/authorize?response_type=code&client_id=mcp-client&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&state=abc&code_challenge=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&code_challenge_method=S256", nil)
 	res := httptest.NewRecorder()
 	service.ServeHTTP(res, req)
 	if res.Code != http.StatusFound || !strings.HasPrefix(res.Header().Get("Location"), "https://github.example/login/oauth/authorize?") {
