@@ -110,6 +110,18 @@ $proxyConfigText = Get-Content -LiteralPath $proxyConfig -Raw
 foreach ($fragment in @("proxy_http_version 1.1", "proxy_buffering off", "proxy_read_timeout", "proxy_send_timeout", "X-Accel-Buffering no", 'proxy_set_header Connection ""')) {
   if ($proxyConfigText -notmatch [regex]::Escape($fragment)) { throw "Reverse proxy example is missing $fragment" }
 }
+$migration = Join-Path $root "deploy/migrations/001_control_plane.sql"
+if (-not (Test-Path -LiteralPath $migration -PathType Leaf)) { throw "Missing PostgreSQL control-plane migration" }
+$migrationText = Get-Content -LiteralPath $migration -Raw
+foreach ($fragment in @("CREATE TABLE IF NOT EXISTS tenants", "CREATE TABLE IF NOT EXISTS members", "CREATE TABLE IF NOT EXISTS projects", "CREATE TABLE IF NOT EXISTS runs", "CREATE TABLE IF NOT EXISTS audit_events")) {
+  if ($migrationText -notmatch [regex]::Escape($fragment)) { throw "Control-plane migration is missing $fragment" }
+}
+$redisContract = Join-Path $root "deploy/REDIS-CONTRACT.md"
+if (-not (Test-Path -LiteralPath $redisContract -PathType Leaf)) { throw "Missing Redis session/event contract" }
+$redisContractText = Get-Content -LiteralPath $redisContract -Raw
+foreach ($fragment in @("session:", "session-events:", "XREAD BLOCK", "XTRIM MINID", "Last-Event-ID", "Pub/Sub is not a durability mechanism")) {
+  if ($redisContractText -notmatch [regex]::Escape($fragment)) { throw "Redis contract is missing $fragment" }
+}
 $checkpointWorkflowPath = Join-Path $root ".github/workflows/checkpoint.yml"
 if (-not (Test-Path -LiteralPath $checkpointWorkflowPath -PathType Leaf)) { throw "Missing checkpoint workflow" }
 $checkpointWorkflow = Get-Content -LiteralPath $checkpointWorkflowPath -Raw

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -130,6 +131,7 @@ type mcpHTTPHandler struct {
 	sessions       map[string]*mcpHTTPSession
 	sseConnections int
 	semaphore      chan struct{}
+	draining       atomic.Bool
 }
 
 type mcpSSEEvent struct {
@@ -171,6 +173,11 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path != "/mcp" {
 		http.NotFound(w, r)
+		return
+	}
+	if h.draining.Load() && r.Method != http.MethodDelete {
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, "MCP gateway is draining", http.StatusServiceUnavailable)
 		return
 	}
 	if r.Method == http.MethodOptions {
@@ -329,6 +336,32 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if response == nil {
 		w.WriteHeader(http.StatusAccepted)
+	}
+}
+
+// BeginDrain stops admitting new MCP requests while allowing active SSE
+// streams and in-flight tool calls to finish during a rolling deployment.
+func (h *mcpHTTPHandler) BeginDrain() {
+	h.draining.Store(true)
+}
+
+// WaitForDrain waits until all active event streams have disconnected or the
+// supplied context expires. It is safe to call more than once.
+func (h *mcpHTTPHandler) WaitForDrain(ctx context.Context) error {
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		h.mu.Lock()
+		active := h.sseConnections
+		h.mu.Unlock()
+		if active == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
 	}
 }
 

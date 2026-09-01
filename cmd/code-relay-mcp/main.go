@@ -129,6 +129,15 @@ func main() {
 	defer stop()
 	go func() {
 		<-ctx.Done()
+		if drainable, ok := handler.(interface {
+			BeginDrain()
+			WaitForDrain(context.Context) error
+		}); ok {
+			drainable.BeginDrain()
+			drainCtx, cancelDrain := context.WithTimeout(context.Background(), 8*time.Second)
+			_ = drainable.WaitForDrain(drainCtx)
+			cancelDrain()
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdownCtx)

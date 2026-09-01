@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -93,5 +94,31 @@ func TestStreamableHTTPSessionExpiry(t *testing.T) {
 	h.mu.Unlock()
 	if h.lookupSession(id) != nil {
 		t.Fatal("expired session remained available")
+	}
+}
+
+func TestStreamableHTTPDrainRejectsNewRequests(t *testing.T) {
+	token := strings.Repeat("t", 32)
+	handler, err := MCPHTTPHandler(MCPHTTPConfig{Root: t.TempDir(), BearerToken: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	drainable := handler.(interface {
+		BeginDrain()
+		WaitForDrain(context.Context) error
+	})
+	drainable.BeginDrain()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}`)))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusServiceUnavailable || res.Header().Get("Retry-After") == "" {
+		t.Fatalf("draining request status/retry = %d/%q", res.Code, res.Header().Get("Retry-After"))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := drainable.WaitForDrain(ctx); err != nil {
+		t.Fatalf("drain wait failed: %v", err)
 	}
 }
