@@ -48,3 +48,9 @@ func TestRedisEventStoreIntegration(t *testing.T) {
 		t.Fatalf("read events: %+v, %v", events, err)
 	}
 }
+
+func TestRedisStreamIDOrdering(t *testing.T) {
+	if !redisStreamIDLess("10-1", "10-2") || !redisStreamIDLess("9-99", "10-0") || redisStreamIDLess("10-2", "10-1") {
+		t.Fatal("redis stream ID ordering is incorrect")
+	}
+}

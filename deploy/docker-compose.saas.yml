@@ -8,6 +8,8 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U code_relay -d code_relay"]
       interval: 5s
@@ -19,6 +21,8 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
+    ports:
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -30,7 +34,8 @@ services:
       context: ..
       dockerfile: Dockerfile
     env_file:
-      - ./remote-mcp.env
+      - path: ./remote-mcp.env
+        required: false
     environment:
       CODE_RELAY_DATABASE_URL: postgres://code_relay:local-development-only@postgres:5432/code_relay?sslmode=disable
       CODE_RELAY_REDIS_URL: redis://redis:6379/0

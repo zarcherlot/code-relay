@@ -80,6 +80,7 @@ func main() {
 				fatal("connect to PostgreSQL control plane: %v", err)
 			}
 			defer controlPlane.Close()
+			config.ControlPlane = controlPlane
 		}
 		oauthClientSecret, secretErr := envSecret("CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET", "CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET_FILE")
 		if secretErr != nil {

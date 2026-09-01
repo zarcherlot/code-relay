@@ -17,6 +17,15 @@ type PostgresControlPlane struct {
 	db *sql.DB
 }
 
+// ControlPlane captures the durable operations required by the MCP request
+// path. It keeps the HTTP adapter testable and allows a transactional service
+// wrapper to replace the direct PostgreSQL implementation later.
+type ControlPlane interface {
+	EnsureTenant(context.Context, string, string) error
+	UpsertProject(context.Context, string, string, string, string, int64) error
+	AppendAudit(context.Context, string, string, string, string, string, []byte) error
+}
+
 func NewPostgresControlPlane(ctx context.Context, dsn string) (*PostgresControlPlane, error) {
 	if strings.TrimSpace(dsn) == "" {
 		return nil, errors.New("postgres DSN is required")

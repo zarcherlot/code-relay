@@ -3,7 +3,9 @@ package relay
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,6 +50,7 @@ type MCPHTTPConfig struct {
 	SSEEventHistory   int
 	MaxSSEConnections int
 	EventStore        SessionEventStore
+	ControlPlane      ControlPlane
 }
 
 // MCPHTTPHandler returns an authenticated HTTP handler for the MCP endpoint.
@@ -267,6 +270,9 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		mcpSessionID = h.newSession(clientID)
 	} else if mcpSessionID != "" {
 		mcpSession := h.lookupSession(mcpSessionID)
+		if mcpSession == nil && h.config.EventStore != nil {
+			mcpSession = h.adoptSession(mcpSessionID, clientID)
+		}
 		if mcpSession == nil {
 			http.Error(w, "unknown MCP session", http.StatusBadRequest)
 			return
@@ -326,6 +332,13 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	var response map[string]any
 	if h.config.RemoteBackend != nil && request.Method == "tools/call" {
+		if h.config.ControlPlane != nil {
+			if err := h.config.ControlPlane.EnsureTenant(ctx, session.Subject, session.Login); err != nil {
+				h.config.AuditLogger.Warn("control plane tenant check failed", "subject", session.Subject, "error", err)
+				h.writeMCP(w, mcpError(request.ID, -32001, "control plane unavailable"))
+				return
+			}
+		}
 		response = handleRemoteMCP(ctx, h.config.RemoteBackend, session, request)
 		h.persistBinding(w, session, request, response)
 	} else {
@@ -338,6 +351,12 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			status = "failed"
 		}
 		h.publishSessionEvent(mcpSessionID, map[string]any{"jsonrpc": "2.0", "method": "notifications/message", "params": map[string]any{"level": "info", "data": "tool execution " + status, "tool": requestToolName(request)}})
+	}
+	if h.config.ControlPlane != nil && session.Subject != "" {
+		metadata, _ := json.Marshal(map[string]any{"method": request.Method, "tool": requestToolName(request), "ok": response != nil && response["error"] == nil})
+		if err := h.config.ControlPlane.AppendAudit(context.Background(), session.Subject, clientID, "mcp.request", "", "", metadata); err != nil {
+			h.config.AuditLogger.Warn("control plane audit write failed", "subject", session.Subject, "error", err)
+		}
 	}
 	if response != nil && (request.HasID || request.JSONRPC != "2.0" || request.Method == "") {
 		if acceptsMCPEventStream(r.Header.Get("Accept")) {
@@ -512,6 +531,20 @@ func (h *mcpHTTPHandler) newSession(owner string) string {
 	}
 }
 
+func (h *mcpHTTPHandler) adoptSession(id, owner string) *mcpHTTPSession {
+	if strings.TrimSpace(id) == "" {
+		return nil
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if session := h.sessions[id]; session != nil {
+		return session
+	}
+	session := &mcpHTTPSession{id: id, owner: owner, expiresAt: time.Now().Add(h.config.SessionTTL), subscribers: make(map[chan mcpSSEEvent]struct{})}
+	h.sessions[id] = session
+	return session
+}
+
 func (h *mcpHTTPHandler) lookupSession(id string) *mcpHTTPSession {
 	if id == "" {
 		return nil
@@ -571,6 +604,9 @@ func (h *mcpHTTPHandler) sessionSSE(w http.ResponseWriter, r *http.Request, id, 
 		return
 	}
 	session := h.lookupSession(id)
+	if session == nil && h.config.EventStore != nil {
+		session = h.adoptSession(id, owner)
+	}
 	if session == nil {
 		http.Error(w, "unknown MCP session", http.StatusNotFound)
 		return
@@ -656,7 +692,12 @@ func (h *mcpHTTPHandler) sessionSSEExternal(w http.ResponseWriter, r *http.Reque
 			if r.Context().Err() != nil {
 				return
 			}
-			_, _ = io.WriteString(w, "event: error\ndata: {\"error\":\"event store unavailable\"}\n\n")
+			message := "event store unavailable"
+			if errors.Is(err, ErrEventCursorExpired) {
+				message = "event cursor expired; reinitialize the MCP session"
+			}
+			payload, _ := json.Marshal(map[string]string{"error": message})
+			writeSSEEvent(w, mcpSSEEvent{id: "", data: payload})
 			flusher.Flush()
 			return
 		}
@@ -707,6 +748,17 @@ func (h *mcpHTTPHandler) persistBinding(w http.ResponseWriter, session OAuthSess
 	if err := h.config.OAuth.setBinding(w, session, repository, ref); err != nil {
 		h.config.AuditLogger.Warn("mcp binding persistence failed", "subject", session.Subject, "error", err)
 	}
+	if h.config.ControlPlane != nil {
+		projectID := projectKey(repository, ref)
+		if err := h.config.ControlPlane.UpsertProject(context.Background(), projectID, session.Subject, repository, ref, session.InstallationID); err != nil {
+			h.config.AuditLogger.Warn("control plane project write failed", "subject", session.Subject, "repository", repository, "ref", ref, "error", err)
+		}
+	}
+}
+
+func projectKey(repository, ref string) string {
+	digest := sha256.Sum256([]byte(repository + "@" + ref))
+	return hex.EncodeToString(digest[:])
 }
 
 func bindingFromResponse(response map[string]any) (string, string, bool) {

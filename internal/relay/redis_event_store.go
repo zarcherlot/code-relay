@@ -2,7 +2,9 @@ package relay
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,8 @@ type RedisSessionEventStore struct {
 	client redis.UniversalClient
 	prefix string
 }
+
+var ErrEventCursorExpired = errors.New("event cursor is older than retained history")
 
 func NewRedisSessionEventStore(client redis.UniversalClient, prefix string) (*RedisSessionEventStore, error) {
 	if client == nil {
@@ -44,6 +48,15 @@ func (s *RedisSessionEventStore) Read(ctx context.Context, sessionID, afterID st
 	if strings.TrimSpace(afterID) == "" {
 		afterID = "0-0"
 	}
+	if afterID != "0-0" {
+		info, err := s.client.XInfoStream(ctx, s.key(sessionID)).Result()
+		if err != nil && err != redis.Nil {
+			return nil, err
+		}
+		if err == nil && info.FirstEntry.ID != "" && redisStreamIDLess(afterID, info.FirstEntry.ID) {
+			return nil, ErrEventCursorExpired
+		}
+	}
 	result, err := s.client.XRead(ctx, &redis.XReadArgs{Streams: []string{s.key(sessionID), afterID}, Count: 64, Block: block}).Result()
 	if err == redis.Nil {
 		return nil, nil
@@ -71,6 +84,24 @@ func (s *RedisSessionEventStore) Read(ctx context.Context, sessionID, afterID st
 		}
 	}
 	return events, nil
+}
+
+func redisStreamIDLess(left, right string) bool {
+	parse := func(value string) (uint64, uint64, bool) {
+		parts := strings.SplitN(value, "-", 2)
+		if len(parts) != 2 {
+			return 0, 0, false
+		}
+		ms, err1 := strconv.ParseUint(parts[0], 10, 64)
+		seq, err2 := strconv.ParseUint(parts[1], 10, 64)
+		return ms, seq, err1 == nil && err2 == nil
+	}
+	leftMS, leftSeq, leftOK := parse(left)
+	rightMS, rightSeq, rightOK := parse(right)
+	if !leftOK || !rightOK {
+		return left < right
+	}
+	return leftMS < rightMS || (leftMS == rightMS && leftSeq < rightSeq)
 }
 
 func toString(value any) string {

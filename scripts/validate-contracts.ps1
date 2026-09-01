@@ -7,7 +7,9 @@ function Read-Json([string]$relativePath) {
     throw "Missing contract file: $relativePath"
   }
   try {
-    return Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    # Windows PowerShell defaults Get-Content to the system code page. Read
+    # UTF-8 explicitly so Chinese runbook fixtures remain valid JSON in CI.
+    return [IO.File]::ReadAllText($path) | ConvertFrom-Json
   } catch {
     throw "Invalid JSON in ${relativePath}: $($_.Exception.Message)"
   }
