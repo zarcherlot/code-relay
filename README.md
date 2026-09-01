@@ -4,12 +4,11 @@
 </h1>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README.zh-CN.md">中文版</a>
+  <a href="README.md">English</a> · <a href="README.zh-CN.md">Chinese</a>
 </p>
 
 <h2 align="center">
-  Build. Prove. Relay.<br>
-  构建，验证，接力。
+  Build. Prove. Relay.
 </h2>
 
 > **Code Relay lets your coding agent develop on one machine and prove the result on another.**
@@ -77,7 +76,7 @@ or blocked verification for the next iteration.
 
 ## Documentation
 
-- [中文 README](README.zh-CN.md)
+- [Chinese README](README.zh-CN.md)
 - [User guide](USER_GUIDE.md)
 - [AI-client installation guide](install.md)
 - [Local desktop install runbook](deploy/LOCAL-INSTALL-RUNBOOK.md)
