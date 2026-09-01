@@ -30,6 +30,11 @@ npm --version
 Node.js 18 or newer is required. If it is unavailable or too old, stop and ask
 the user to install a current Node.js LTS release.
 
+The commands below use `npx` so no persistent npm installation is required. If
+the user explicitly prefers a global command, use `npm install --global
+code-relay-mcp` and replace the leading `npx -y code-relay-mcp@latest` with
+`code-relay-mcp` in later steps.
+
 ## Step 2: Identify the active AI client
 
 Choose exactly one supported client identifier:

@@ -45,16 +45,19 @@ function sha256(data) {
   return crypto.createHash('sha256').update(data).digest('hex');
 }
 
-function requestBuffer(url, maxBytes, redirects = 5) {
+function requestBuffer(url, maxBytes, redirects = 5, allowHttp = new URL(url).protocol === 'http:') {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
+    if (!allowHttp && parsed.protocol !== 'https:') {
+      return reject(new Error(`Refusing insecure download protocol: ${parsed.protocol}`));
+    }
     const transport = parsed.protocol === 'https:' ? https : parsed.protocol === 'http:' ? http : null;
     if (!transport) return reject(new Error(`Unsupported download protocol: ${parsed.protocol}`));
     const request = transport.get(parsed, { headers: { 'User-Agent': 'code-relay-mcp' } }, (response) => {
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         response.resume();
         if (redirects === 0) return reject(new Error('Too many download redirects'));
-        return resolve(requestBuffer(new URL(response.headers.location, parsed).toString(), maxBytes, redirects - 1));
+        return resolve(requestBuffer(new URL(response.headers.location, parsed).toString(), maxBytes, redirects - 1, allowHttp));
       }
       if (response.statusCode !== 200) {
         response.resume();

@@ -2,11 +2,12 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { genericConfiguration, parseInstallArgs, writeJsonClient } = require('../lib/install.cjs');
-const { parseChecksums, resolveAsset, sha256 } = require('../lib/native.cjs');
+const { ensureAgent, parseChecksums, resolveAsset, sha256 } = require('../lib/native.cjs');
 
 test('maps supported npm platforms to release assets', () => {
   assert.equal(resolveAsset('linux', 'x64'), 'code-relay-agent-linux-amd64');
@@ -43,4 +44,39 @@ test('generic configuration is deterministic and pinned', () => {
   assert.deepEqual(genericConfiguration('3.1.0'), {
     mcpServers: { 'code-relay': { command: 'npx', args: ['-y', 'code-relay-mcp@3.1.0'] } }
   });
+});
+
+test('downloads and caches only a checksum-matched native asset', async (t) => {
+  const asset = 'code-relay-agent-windows-amd64.exe';
+  const binary = Buffer.from('fake-code-relay-agent');
+  const digest = sha256(binary);
+  let assetRequests = 0;
+  const server = http.createServer((request, response) => {
+    if (request.url === '/SHA256SUMS') {
+      response.end(`${digest}  ${asset}\n`);
+      return;
+    }
+    if (request.url === `/${asset}`) {
+      assetRequests += 1;
+      response.end(binary);
+      return;
+    }
+    response.writeHead(404).end();
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'code-relay-download-'));
+  const address = server.address();
+  const options = {
+    version: '9.9.9',
+    platform: 'win32',
+    arch: 'x64',
+    cacheRoot: root,
+    baseUrl: `http://127.0.0.1:${address.port}`
+  };
+  const first = await ensureAgent(options);
+  assert.deepEqual(fs.readFileSync(first), binary);
+  assert.equal(assetRequests, 1);
+  assert.equal(await ensureAgent(options), first);
+  assert.equal(assetRequests, 1);
 });
