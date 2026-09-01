@@ -4,11 +4,13 @@ All notable changes to Code Relay are recorded here. The project is currently in
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-09-01
+
 ### Added
 
 - Added the `code-relay-mcp` npm distribution with a zero-dependency launcher
   that downloads and verifies the matching native Code Relay release artifact.
-- Added an agent-readable `install.md` and an idempotent installer for Codex,
+- Added an agent-readable `install.md` and an idempotent installer for Codex CLI,
   Claude Code, Cursor, VS Code, and generic MCP clients.
 - Added official MCP Registry metadata and tag-driven npm/Registry publication
   automation.
@@ -96,7 +98,7 @@ All notable changes to Code Relay are recorded here. The project is currently in
 
 ### Added
 
-- Formal Codex plugin manifest under `.codex-plugin/plugin.json`.
+- Formal plugin manifest under `.codex-plugin/plugin.json` for the ChatGPT/Codex plugin surface.
 - Orchestrator and checkpoint Skills with plugin-local MCP tools.
 - Branch-scoped project binding using canonical repository and remote ref.
 - Short-lived checkpoint invitation links.
