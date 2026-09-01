@@ -34,13 +34,13 @@ foreach ($field in @("allowed_commands", "denied_command_arguments", "deny_token
 }
 
 $manifest = Read-Json ".codex-plugin/plugin.json"
-if ($manifest.name -ne "code-relay" -or $manifest.version -notmatch '^3\.1\.0(?:\+codex\.[A-Za-z0-9._-]+)?$') {
-  throw "Plugin manifest must identify code-relay 3.1.0, optionally with a Codex cachebuster"
+if ($manifest.name -ne "code-relay" -or $manifest.version -notmatch '^3\.1\.0(?:\+build\.[A-Za-z0-9._-]+)?$') {
+  throw "Plugin manifest must identify code-relay 3.1.0, optionally with a build cachebuster"
 }
 if ($manifest.interface.displayName -ne "Code Relay") {
   throw "Plugin display name must be Code Relay"
 }
-$baseVersion = $manifest.version -replace '\+codex\..+$', ''
+$baseVersion = $manifest.version -replace '\+build\..+$', ''
 $npmPackage = Read-Json "package.json"
 $registryServer = Read-Json "server.json"
 if ($npmPackage.name -ne "code-relay-mcp" -or $npmPackage.version -ne $baseVersion) {
@@ -59,7 +59,7 @@ if ($registryPackage.Count -ne 1 -or $registryPackage[0].identifier -ne $npmPack
 $installGuide = Join-Path $root "install.md"
 if (-not (Test-Path -LiteralPath $installGuide -PathType Leaf)) { throw "Missing install.md" }
 $installGuideText = Get-Content -LiteralPath $installGuide -Raw
-foreach ($fragment in @("code-relay-mcp@latest", "--client codex", "--yes", "SHA256SUMS")) {
+foreach ($fragment in @("code-relay-mcp@latest", "--client codex", "--client claude-code", "--client cursor", "--client vscode", "--client generic", "--yes", "SHA256SUMS")) {
   if ($installGuideText -notmatch [regex]::Escape($fragment)) { throw "install.md is missing $fragment" }
 }
 

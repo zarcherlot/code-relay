@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: Let a Codex host join a branch-scoped Code Relay subscription and verify incoming runbooks.
+description: Let a coding-agent host join a branch-scoped Code Relay subscription and verify incoming runbooks.
 ---
 
 # Code Relay checkpoint

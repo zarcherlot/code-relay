@@ -1,6 +1,6 @@
 # Code Relay release checklist
 
-This checklist covers the 3.x Go runtime, Codex plugin, npm package, and MCP
+This checklist covers the 3.x Go runtime, ChatGPT/Codex plugin package, npm package, and MCP
 Registry entry.
 
 ## Candidate gate

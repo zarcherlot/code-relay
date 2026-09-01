@@ -1,7 +1,9 @@
 # Code Relay plugin publishing
 
 This document records the current path from a source checkout to a local,
-workspace, or public ChatGPT/Codex plugin listing.
+workspace, or public ChatGPT/Codex plugin listing. The packaged MCP server is
+client-neutral; the ChatGPT/Codex package is one distribution surface alongside
+the npm package used by other MCP-capable coding agents.
 
 ## Build a desktop package
 

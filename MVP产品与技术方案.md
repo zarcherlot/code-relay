@@ -2,15 +2,15 @@
 
 ## 1. 一句话定义
 
-Code Relay 是一个以 Codex 对话为唯一工作界面的双机协作插件：Dev Host 负责开发和编排，Checkpoint Host 负责目标环境验证；GitHub 负责代码、Runbook、状态和 Receipt 的中转。
+Code Relay 是一个以 coding-agent 对话为主要工作界面的双机协作插件：Dev Host 负责开发和编排，Checkpoint Host 负责目标环境验证；GitHub 负责代码、Runbook、状态和 Receipt 的中转。ChatGPT/Codex 是优先适配的插件入口，但 Relay 通过 MCP 也支持其他 coding agent。
 
 ## 2. MVP 用户体验
 
-用户只在 A 的 Codex 中下达一条业务指令，例如：
+用户只在 Dev Host 的 coding agent 中下达一条业务指令，例如：
 
 > 完成支付回调幂等改造，提交并合入；合入后让 Checkpoint 按目标环境验证，失败就继续修复，直到验证通过。
 
-A Codex 自动完成：
+Dev Host 的 coding agent 自动完成：
 
 1. 修改代码并执行本地验证。
 2. 提交分支、推送并创建 PR。
@@ -19,7 +19,7 @@ A Codex 自动完成：
 5. 监听 Checkpoint 的回执。
 6. 拉取并分析回执；失败时开始下一轮开发，成功时向用户报告完成。
 
-Checkpoint Codex 自动完成：
+Checkpoint Host 的 coding agent 自动完成：
 
 1. 监听 GitHub 中新增的 Runbook。
 2. 拉取 Runbook 指定的代码版本和 `runbook.md`。
@@ -27,7 +27,7 @@ Checkpoint Codex 自动完成：
 4. 对比实际结果和预期结果。
 5. 生成回执并推送到 GitHub。
 
-用户在 Codex 中看到的是阶段性状态，而不是 GitHub Actions 细节：
+用户在 coding agent 中看到的是阶段性状态，而不是 GitHub Actions 细节：
 
 ```text
 ✓ PR #42 已合入
@@ -39,7 +39,7 @@ Checkpoint Codex 自动完成：
 
 ## 3. 产品形态
 
-MVP 不做独立 Web 控制台，形态只有一个 Codex Plugin（Go CLI/MCP 是插件 runtime，GitHub Actions 负责目标机调度）：
+MVP 不做独立 Web 控制台，形态是 MCP 服务和可选的 ChatGPT/Codex 插件包（Go CLI/MCP 是 runtime，GitHub Actions 负责目标机调度）：
 
 ```text
 Code Relay Plugin
@@ -63,8 +63,8 @@ role: checkpoint
 
 ```text
 用户
-  ↓ Codex 对话
- A Codex + Code Relay Plugin
+  ↓ coding-agent 对话
+ Dev Host coding agent + Code Relay MCP/plugin
   ├─ 本地开发/测试
   ├─ PR、CI、合入
   ├─ 生成 runbook.md
@@ -85,7 +85,7 @@ MVP 使用 GitHub Actions self-hosted runner 触发 Checkpoint，Checkpoint 不�
 
 ### 4.1 工程/分支绑定
 
-一次 Code Relay 绑定由 `repository + refs/heads/<branch>` 唯一确定。Dev Host 在工程目录的 Codex 中请求“绑定当前工程当前分支”后，插件读取 Git remote 和当前分支，写入 `.code-relay/project.json`，提交并推送集成文件，并立即生成短时效 Checkpoint 加入链接。Checkpoint 粘贴链接后，插件先展示仓库、分支和权限；若当前 Codex 窗口没有仓库，确认后自动克隆该分支到空目录并关联，随后注册带 `code-relay-checkpoint` 标签的 GitHub Actions runner。若已有不同仓库/分支，原目录保持不变。
+一次 Code Relay 绑定由 `repository + refs/heads/<branch>` 唯一确定。Dev Host 在工程目录的 coding agent 中请求“绑定当前工程当前分支”后，插件读取 Git remote 和当前分支，写入 `.code-relay/project.json`，提交并推送集成文件，并立即生成短时效 Checkpoint 加入链接。Checkpoint 粘贴链接后，插件先展示仓库、分支和权限；若当前窗口没有仓库，确认后自动克隆该分支到空目录并关联，随后注册带 `code-relay-checkpoint` 标签的 GitHub Actions runner。若已有不同仓库/分支，原目录保持不变。
 
 ## 5. GitHub 数据约定
 
@@ -145,7 +145,7 @@ receipts/
 }
 ```
 
-`receipt.md` 用于 Codex 阅读和向用户总结；`receipt.json` 用于程序判断。失败和阻塞也必须生成回执。
+`receipt.md` 用于 coding agent 阅读和向用户总结；`receipt.json` 用于程序判断。失败和阻塞也必须生成回执。
 
 ## 6. 状态机
 
@@ -163,8 +163,8 @@ developing → pr_open → ci_running → merged
 
 必须有：
 
-- A Codex 的自然语言触发和 Runbook 编排 Skill。
-- Checkpoint Codex 的验证 Skill。
+- Dev Host coding agent 的自然语言触发和 Runbook 编排 Skill。
+- Checkpoint coding agent 的验证 Skill。
 - GitHub Runbook 和 Receipt 目录约定。
 - A 开发、PR、CI、合入后的 Runbook 发布。
 - Checkpoint self-hosted runner 执行验证。
@@ -183,7 +183,7 @@ developing → pr_open → ci_running → merged
 
 ## 8. 成功标准
 
-从 A 的 Codex 输入一句需求指令开始，能够完成以下闭环：
+从 Dev Host 的 coding agent 输入一句需求指令开始，能够完成以下闭环：
 
 ```text
 本地开发 → PR → CI → 合入 → 发布 runbook.md
