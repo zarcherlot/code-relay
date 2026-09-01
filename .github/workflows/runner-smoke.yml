@@ -1,0 +1,19 @@
+name: Code Relay - runner smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runner-smoke:
+    runs-on: [self-hosted, code-relay-checkpoint]
+    timeout-minutes: 10
+    steps:
+      - name: Verify runner
+        shell: pwsh
+        run: |
+          Write-Output "runner=$env:RUNNER_NAME"
+          Write-Output "os=$env:RUNNER_OS arch=$env:RUNNER_ARCH"
+          if ($env:RUNNER_NAME -ne "code-relay-staging-local") { throw "unexpected runner" }
