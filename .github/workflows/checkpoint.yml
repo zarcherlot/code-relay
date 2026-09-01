@@ -30,8 +30,8 @@ jobs:
           fetch-depth: 1
           # The checkpoint job may need to fetch the source commit referenced
           # by a runbook from this private repository. Keep the short-lived
-          # Actions token in git config for that fetch, then the runner
-          # workspace is discarded after the job.
+          # Actions token in git config for that fetch; actions/checkout
+          # removes the credential during its post-job cleanup.
           persist-credentials: true
       - name: Verify preinstalled Go
         shell: pwsh
