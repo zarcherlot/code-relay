@@ -1,0 +1,21 @@
+# Nginx location baseline for the hosted Streamable HTTP endpoint.
+# Terminate TLS at the ingress and keep the gateway on a private network.
+location /mcp {
+    proxy_pass http://code-relay-gateway:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Authorization $http_authorization;
+
+    # SSE must be flushed promptly instead of buffered by the proxy.
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_set_header Connection "";
+    add_header X-Accel-Buffering no always;
+    gzip off;
+
+    # Heartbeats are emitted by the gateway every 15 seconds by default.
+    proxy_read_timeout 1h;
+    proxy_send_timeout 1h;
+}

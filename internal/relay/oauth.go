@@ -42,6 +42,14 @@ type OAuthConfig struct {
 	StateCookie    string
 	CookieDomain   string
 	SecureCookies  bool
+	// SessionStore enables opaque, server-side sessions. When nil, encrypted
+	// cookies remain the backwards-compatible default.
+	SessionStore           SessionStore
+	IssuerURL              string
+	ResourceURL            string
+	AuthorizationServerURL string
+	TokenEndpointURL       string
+	OAuthScopes            []string
 }
 
 type OAuthSession struct {
@@ -81,6 +89,26 @@ type OAuthService struct {
 	config OAuthConfig
 	client *http.Client
 	key    []byte
+	store  SessionStore
+}
+
+// IssueAccessToken creates an opaque bearer credential backed by the
+// configured SessionStore. It is intentionally unavailable with legacy
+// encrypted-cookie mode; hosted deployments should configure a shared store.
+func (s *OAuthService) IssueAccessToken(ctx context.Context, session OAuthSession, ttl time.Duration) (string, error) {
+	if s.store == nil {
+		return "", errors.New("opaque access tokens require a session store")
+	}
+	return s.store.Create(ctx, session, ttl)
+}
+
+// RotateAccessToken atomically revokes an existing opaque credential and
+// creates a replacement with the supplied session and lifetime.
+func (s *OAuthService) RotateAccessToken(ctx context.Context, token string, session OAuthSession, ttl time.Duration) (string, error) {
+	if s.store == nil {
+		return "", errors.New("opaque access tokens require a session store")
+	}
+	return s.store.Rotate(ctx, token, session, ttl)
 }
 
 func NewOAuthService(config OAuthConfig) (*OAuthService, error) {
@@ -91,6 +119,10 @@ func NewOAuthService(config OAuthConfig) (*OAuthService, error) {
 	config.AppSlug = strings.TrimSpace(config.AppSlug)
 	config.GitHubOAuthURL = strings.TrimSpace(config.GitHubOAuthURL)
 	config.GitHubAPIURL = strings.TrimSpace(config.GitHubAPIURL)
+	config.IssuerURL = strings.TrimSpace(config.IssuerURL)
+	config.ResourceURL = strings.TrimSpace(config.ResourceURL)
+	config.AuthorizationServerURL = strings.TrimSpace(config.AuthorizationServerURL)
+	config.TokenEndpointURL = strings.TrimSpace(config.TokenEndpointURL)
 	if config.GitHubOAuthURL == "" {
 		config.GitHubOAuthURL = defaultGitHubOAuthURL
 	}
@@ -113,7 +145,7 @@ func NewOAuthService(config OAuthConfig) (*OAuthService, error) {
 		return nil, errors.New("GitHub App slug is required for installation flow")
 	}
 	key := sha256.Sum256([]byte(config.SessionSecret))
-	return &OAuthService{config: config, client: &http.Client{Timeout: 15 * time.Second}, key: key[:]}, nil
+	return &OAuthService{config: config, client: &http.Client{Timeout: 15 * time.Second}, key: key[:], store: config.SessionStore}, nil
 }
 
 // ServeHTTP serves the OAuth endpoints.  It is intended to be mounted under
@@ -135,20 +167,46 @@ func (s *OAuthService) ServeHTTP(w http.ResponseWriter, r *http.Request) bool {
 	case "/auth/logout":
 		s.logout(w, r)
 		return true
+	case "/.well-known/oauth-protected-resource", "/mcp/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server":
+		s.metadata(w, r)
+		return true
 	default:
 		return false
 	}
 }
 
 func (s *OAuthService) Authenticate(r *http.Request) (OAuthSession, error) {
+	if s.store != nil {
+		if authorization := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(strings.ToLower(authorization), "bearer ") {
+			id := strings.TrimSpace(authorization[len("bearer "):])
+			if id == "" {
+				return OAuthSession{}, errors.New("invalid bearer token")
+			}
+			if session, err := s.store.Get(r.Context(), id); err == nil {
+				return validateOAuthSession(session)
+			}
+			return OAuthSession{}, errors.New("invalid bearer token")
+		}
+	}
 	cookie, err := r.Cookie(s.config.SessionCookie)
 	if err != nil {
 		return OAuthSession{}, errors.New("authentication required")
+	}
+	if s.store != nil {
+		session, err := s.store.Get(r.Context(), cookie.Value)
+		if err != nil {
+			return OAuthSession{}, errors.New("invalid session")
+		}
+		return validateOAuthSession(session)
 	}
 	var session OAuthSession
 	if err := s.open(cookie.Value, &session); err != nil {
 		return OAuthSession{}, errors.New("invalid session")
 	}
+	return validateOAuthSession(session)
+}
+
+func validateOAuthSession(session OAuthSession) (OAuthSession, error) {
 	if session.Subject == "" || session.AccessToken == "" || session.ExpiresAt <= time.Now().Unix() {
 		return OAuthSession{}, errors.New("session expired")
 	}
@@ -313,17 +371,42 @@ func (s *OAuthService) logout(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodPost)
 		return
 	}
+	if s.store != nil {
+		if cookie, err := r.Cookie(s.config.SessionCookie); err == nil {
+			_ = s.store.Revoke(r.Context(), cookie.Value)
+		}
+		if authorization := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(strings.ToLower(authorization), "bearer ") {
+			_ = s.store.Revoke(r.Context(), strings.TrimSpace(authorization[len("bearer "):]))
+		}
+	}
 	http.SetCookie(w, s.cookie(s.config.SessionCookie, "", -1))
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *OAuthService) setSession(w http.ResponseWriter, session OAuthSession) error {
+	if s.store != nil {
+		ttl := time.Until(time.Unix(session.ExpiresAt, 0))
+		id, err := s.store.Create(context.Background(), session, ttl)
+		if err != nil {
+			return err
+		}
+		http.SetCookie(w, s.cookie(s.config.SessionCookie, id, cookieMaxAge(ttl)))
+		return nil
+	}
 	value, err := s.seal(session)
 	if err != nil {
 		return err
 	}
 	http.SetCookie(w, s.cookie(s.config.SessionCookie, value, int(time.Until(time.Unix(session.ExpiresAt, 0)).Seconds())))
 	return nil
+}
+
+func cookieMaxAge(ttl time.Duration) int {
+	seconds := int(ttl / time.Second)
+	if ttl > 0 && seconds == 0 {
+		return 1
+	}
+	return seconds
 }
 
 func (s *OAuthService) setBinding(w http.ResponseWriter, session OAuthSession, repository, ref string) error {

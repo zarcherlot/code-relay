@@ -41,6 +41,7 @@ func main() {
 		RatePerMinute:   envInt("CODE_RELAY_MCP_RATE_PER_MINUTE", 60),
 		MaxConcurrent:   envInt("CODE_RELAY_MCP_MAX_CONCURRENT", 4),
 		RequestTimeout:  time.Duration(envInt("CODE_RELAY_MCP_TIMEOUT_SECONDS", 60)) * time.Second,
+		AllowedOrigins:  splitCSV(os.Getenv("CODE_RELAY_CORS_ALLOWED_ORIGINS")),
 	}
 	remoteEnabled := strings.TrimSpace(os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID")) != ""
 	if remoteEnabled {
@@ -70,7 +71,16 @@ func main() {
 		if secretErr != nil {
 			fatal("configure GitHub OAuth client secret: %v", secretErr)
 		}
-		oauth, oauthErr := relay.NewOAuthService(relay.OAuthConfig{
+		publicBaseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("CODE_RELAY_PUBLIC_BASE_URL")), "/")
+		issuerURL := strings.TrimRight(strings.TrimSpace(os.Getenv("CODE_RELAY_OAUTH_ISSUER_URL")), "/")
+		if issuerURL == "" {
+			issuerURL = publicBaseURL
+		}
+		resourceURL := strings.TrimRight(strings.TrimSpace(os.Getenv("CODE_RELAY_OAUTH_RESOURCE_URL")), "/")
+		if resourceURL == "" && publicBaseURL != "" {
+			resourceURL = publicBaseURL + "/mcp"
+		}
+		oauthConfig := relay.OAuthConfig{
 			ClientID:       os.Getenv("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID"),
 			ClientSecret:   oauthClientSecret,
 			RedirectURL:    os.Getenv("CODE_RELAY_GITHUB_OAUTH_REDIRECT_URL"),
@@ -80,7 +90,18 @@ func main() {
 			GitHubAPIURL:   apiURL,
 			CookieDomain:   os.Getenv("CODE_RELAY_COOKIE_DOMAIN"),
 			SecureCookies:  envBool("CODE_RELAY_COOKIE_SECURE", true),
-		})
+			IssuerURL:      issuerURL,
+			ResourceURL:    resourceURL,
+			OAuthScopes:    splitCSV(os.Getenv("CODE_RELAY_OAUTH_SCOPES")),
+		}
+		// Memory sessions make the hosted single-instance deployment use opaque
+		// browser cookies and bearer credentials. Set CODE_RELAY_SESSION_STORE=cookie
+		// only for compatibility testing; replace this store with Redis before
+		// running more than one gateway instance.
+		if strings.EqualFold(envOr("CODE_RELAY_SESSION_STORE", "memory"), "memory") {
+			oauthConfig.SessionStore = relay.NewMemorySessionStore()
+		}
+		oauth, oauthErr := relay.NewOAuthService(oauthConfig)
 		if oauthErr != nil {
 			fatal("configure OAuth: %v", oauthErr)
 		}
@@ -93,7 +114,9 @@ func main() {
 	if err != nil {
 		fatal("configure MCP gateway: %v", err)
 	}
-	server := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 70 * time.Second, WriteTimeout: 70 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 * 1024}
+	// WriteTimeout must remain disabled for the long-lived Streamable HTTP GET
+	// event stream. Request-level deadlines are enforced by MCPHTTPConfig.
+	server := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 70 * time.Second, WriteTimeout: 0, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 * 1024}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

@@ -2,13 +2,18 @@ package relay
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +39,7 @@ type MCPHTTPConfig struct {
 	RatePerMinute   int
 	MaxConcurrent   int
 	AllowedTools    map[string]bool
+	AllowedOrigins  []string
 	RequestTimeout  time.Duration
 }
 
@@ -75,6 +81,7 @@ func MCPHTTPHandler(config MCPHTTPConfig) (http.Handler, error) {
 	return &mcpHTTPHandler{
 		config:    config,
 		clients:   make(map[string][]time.Time),
+		sessions:  make(map[string]*mcpHTTPSession),
 		semaphore: make(chan struct{}, config.MaxConcurrent),
 	}, nil
 }
@@ -100,8 +107,32 @@ type mcpHTTPHandler struct {
 	config    MCPHTTPConfig
 	mu        sync.Mutex
 	clients   map[string][]time.Time
+	sessions  map[string]*mcpHTTPSession
 	semaphore chan struct{}
 }
+
+type mcpSSEEvent struct {
+	id   string
+	data []byte
+}
+
+type mcpHTTPSession struct {
+	mu          sync.Mutex
+	id          string
+	owner       string
+	expiresAt   time.Time
+	nextEventID uint64
+	events      []mcpSSEEvent
+	subscribers map[chan mcpSSEEvent]struct{}
+	closed      bool
+}
+
+const (
+	mcpProtocolVersion = "2024-11-05"
+	mcpCurrentProtocol = "2025-06-18"
+	mcpSSEHeartbeat    = 15 * time.Second
+	mcpSSEEventHistory = 256
+)
 
 func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.config.OAuth != nil && h.config.OAuth.ServeHTTP(w, r) {
@@ -123,9 +154,14 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", http.MethodPost)
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if r.Method == http.MethodOptions {
+		if !validMCPOrigin(r, h.config.AllowedOrigins) {
+			http.Error(w, "invalid origin", http.StatusForbidden)
+			return
+		}
+		h.writeCORS(w, r)
+		w.Header().Set("Allow", "GET, POST, DELETE, OPTIONS")
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	var session OAuthSession
@@ -134,7 +170,7 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var err error
 		session, err = h.config.OAuth.Authenticate(r)
 		if err != nil {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="code-relay"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="code-relay", resource_metadata="`+h.oauthResourceMetadataURL(r)+`"`)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			h.config.AuditLogger.Warn("mcp authentication failed", "path", r.URL.Path, "remote", clientAddress(r))
 			return
@@ -142,6 +178,34 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		clientID = session.Subject
 	} else if !h.authorized(r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	h.writeCORS(w, r)
+	if !validMCPOrigin(r, h.config.AllowedOrigins) {
+		http.Error(w, "invalid origin", http.StatusForbidden)
+		return
+	}
+	if err := validateMCPProtocol(r); err != nil {
+		w.Header().Set("MCP-Protocol-Version", mcpCurrentProtocol)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if r.Method == http.MethodGet {
+		if !acceptsMCPEventStream(r.Header.Get("Accept")) {
+			w.Header().Set("Accept", "text/event-stream")
+			http.Error(w, "GET /mcp requires Accept: text/event-stream", http.StatusNotAcceptable)
+			return
+		}
+		h.sessionSSE(w, r, r.Header.Get("Mcp-Session-Id"), r.Header.Get("Last-Event-ID"), clientID)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		h.deleteSession(w, r, r.Header.Get("Mcp-Session-Id"), clientID)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "GET, POST, DELETE")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	if !h.allowClient(clientID) {
@@ -170,6 +234,23 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &request); err != nil {
 		h.writeMCP(w, mcpError(nil, -32700, "invalid JSON: "+err.Error()))
 		return
+	}
+	mcpSessionID := strings.TrimSpace(r.Header.Get("Mcp-Session-Id"))
+	if request.Method == "initialize" && mcpSessionID == "" {
+		mcpSessionID = h.newSession(clientID)
+	} else if mcpSessionID != "" {
+		mcpSession := h.lookupSession(mcpSessionID)
+		if mcpSession == nil {
+			http.Error(w, "unknown MCP session", http.StatusBadRequest)
+			return
+		}
+		if mcpSession.owner != clientID {
+			http.Error(w, "MCP session belongs to another client", http.StatusForbidden)
+			return
+		}
+	}
+	if mcpSessionID != "" {
+		w.Header().Set("Mcp-Session-Id", mcpSessionID)
 	}
 	if request.Method == "tools/call" {
 		name, _ := request.Params["name"].(string)
@@ -222,8 +303,268 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.config.AuditLogger.Info("mcp tool request", "subject", clientID, "login", session.Login, "method", request.Method, "tool", requestToolName(request), "ok", response != nil && response["error"] == nil, "duration_ms", time.Since(started).Milliseconds())
 	if response != nil && (request.HasID || request.JSONRPC != "2.0" || request.Method == "") {
-		h.writeMCP(w, response)
+		if acceptsMCPEventStream(r.Header.Get("Accept")) {
+			h.writeMCPSSE(w, response)
+		} else {
+			h.writeMCP(w, response)
+		}
+	} else if response == nil {
+		w.WriteHeader(http.StatusAccepted)
 	}
+}
+
+func (h *mcpHTTPHandler) oauthResourceMetadataURL(r *http.Request) string {
+	if issuer := strings.TrimRight(h.config.OAuth.config.IssuerURL, "/"); issuer != "" {
+		return issuer + "/.well-known/oauth-protected-resource"
+	}
+	scheme := "https"
+	if forwarded := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]); forwarded == "http" || forwarded == "https" {
+		scheme = forwarded
+	}
+	return scheme + "://" + r.Host + "/.well-known/oauth-protected-resource"
+}
+
+func (h *mcpHTTPHandler) publishSessionEvent(id string, value map[string]any) {
+	session := h.lookupSession(id)
+	if session == nil {
+		return
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return
+	}
+	session.nextEventID++
+	event := mcpSSEEvent{id: fmt.Sprintf("%016x", session.nextEventID), data: data}
+	session.events = append(session.events, event)
+	if len(session.events) > mcpSSEEventHistory {
+		session.events = session.events[len(session.events)-mcpSSEEventHistory:]
+	}
+	for subscriber := range session.subscribers {
+		select {
+		case subscriber <- event:
+		default:
+			// Slow consumers are disconnected by closing their bounded queue.
+			close(subscriber)
+			delete(session.subscribers, subscriber)
+		}
+	}
+}
+
+func validMCPOrigin(r *http.Request, allowedOrigins []string) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	for _, allowed := range allowedOrigins {
+		if strings.EqualFold(strings.TrimRight(strings.TrimSpace(allowed), "/"), strings.TrimRight(origin, "/")) {
+			return true
+		}
+	}
+	if len(allowedOrigins) > 0 {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
+}
+
+func (h *mcpHTTPHandler) writeCORS(w http.ResponseWriter, r *http.Request) {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" || !validMCPOrigin(r, h.config.AllowedOrigins) {
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Mcp-Method, Mcp-Name, Mcp-Protocol-Version, Mcp-Session-Id, Last-Event-ID")
+	w.Header().Set("Access-Control-Expose-Headers", "Mcp-Protocol-Version, Mcp-Session-Id")
+	w.Header().Add("Vary", "Origin")
+}
+
+func validateMCPProtocol(r *http.Request) error {
+	version := strings.TrimSpace(r.Header.Get("MCP-Protocol-Version"))
+	if version == "" || version == mcpProtocolVersion || version == mcpCurrentProtocol {
+		return nil
+	}
+	return errors.New("unsupported MCP protocol version")
+}
+
+func acceptsMCPEventStream(value string) bool {
+	if strings.TrimSpace(value) == "" {
+		return false
+	}
+	for _, part := range strings.Split(value, ",") {
+		if strings.EqualFold(strings.TrimSpace(strings.SplitN(part, ";", 2)[0]), "text/event-stream") {
+			return true
+		}
+	}
+	return false
+}
+
+func newMCPSessionID() string {
+	buf := make([]byte, 18)
+	if _, err := rand.Read(buf); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return base64.RawURLEncoding.EncodeToString(buf)
+}
+
+func (h *mcpHTTPHandler) newSession(owner string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for {
+		id := newMCPSessionID()
+		if _, exists := h.sessions[id]; !exists {
+			h.sessions[id] = &mcpHTTPSession{id: id, owner: owner, expiresAt: time.Now().Add(30 * time.Minute), subscribers: make(map[chan mcpSSEEvent]struct{})}
+			return id
+		}
+	}
+}
+
+func (h *mcpHTTPHandler) lookupSession(id string) *mcpHTTPSession {
+	if id == "" {
+		return nil
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	session := h.sessions[id]
+	if session == nil {
+		return nil
+	}
+	if !session.expiresAt.IsZero() && time.Now().After(session.expiresAt) {
+		delete(h.sessions, id)
+		session.mu.Lock()
+		session.closed = true
+		for sub := range session.subscribers {
+			close(sub)
+		}
+		session.subscribers = nil
+		session.mu.Unlock()
+		return nil
+	}
+	return session
+}
+
+func (h *mcpHTTPHandler) deleteSession(w http.ResponseWriter, r *http.Request, id, owner string) {
+	if id == "" {
+		http.Error(w, "Mcp-Session-Id is required", http.StatusBadRequest)
+		return
+	}
+	h.mu.Lock()
+	session := h.sessions[id]
+	if session != nil && session.owner == owner {
+		delete(h.sessions, id)
+	}
+	h.mu.Unlock()
+	if session == nil {
+		http.Error(w, "unknown MCP session", http.StatusNotFound)
+		return
+	}
+	if session.owner != owner {
+		http.Error(w, "MCP session belongs to another client", http.StatusForbidden)
+		return
+	}
+	session.mu.Lock()
+	session.closed = true
+	for sub := range session.subscribers {
+		close(sub)
+	}
+	session.subscribers = nil
+	session.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *mcpHTTPHandler) sessionSSE(w http.ResponseWriter, r *http.Request, id, lastID, owner string) {
+	if id == "" {
+		http.Error(w, "Mcp-Session-Id is required", http.StatusBadRequest)
+		return
+	}
+	session := h.lookupSession(id)
+	if session == nil {
+		http.Error(w, "unknown MCP session", http.StatusNotFound)
+		return
+	}
+	if session.owner != owner {
+		http.Error(w, "MCP session belongs to another client", http.StatusForbidden)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "SSE streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("MCP-Protocol-Version", mcpCurrentProtocol)
+	sub := make(chan mcpSSEEvent, 32)
+	session.mu.Lock()
+	if session.closed {
+		session.mu.Unlock()
+		http.Error(w, "MCP session is closed", http.StatusGone)
+		return
+	}
+	for _, event := range session.events {
+		if lastID == "" || event.id > lastID {
+			writeSSEEvent(w, event)
+		}
+	}
+	session.subscribers[sub] = struct{}{}
+	session.mu.Unlock()
+	flusher.Flush()
+	defer func() {
+		session.mu.Lock()
+		delete(session.subscribers, sub)
+		session.mu.Unlock()
+	}()
+	ticker := time.NewTicker(mcpSSEHeartbeat)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case event, open := <-sub:
+			if !open {
+				return
+			}
+			writeSSEEvent(w, event)
+			flusher.Flush()
+		case <-ticker.C:
+			_, _ = io.WriteString(w, ": heartbeat\n\n")
+			flusher.Flush()
+		}
+	}
+}
+
+func (h *mcpHTTPHandler) writeMCPSSE(w http.ResponseWriter, value map[string]any) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("MCP-Protocol-Version", mcpCurrentProtocol)
+	data, _ := json.Marshal(value)
+	writeSSEEvent(w, mcpSSEEvent{id: strconv.FormatInt(time.Now().UnixNano(), 36), data: data})
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func writeSSEEvent(w io.Writer, event mcpSSEEvent) {
+	if event.id != "" {
+		_, _ = io.WriteString(w, "id: "+event.id+"\n")
+	}
+	_, _ = io.WriteString(w, "event: message\n")
+	for _, line := range strings.Split(string(event.data), "\n") {
+		_, _ = io.WriteString(w, "data: "+line+"\n")
+	}
+	_, _ = io.WriteString(w, "\n")
 }
 
 func (h *mcpHTTPHandler) persistBinding(w http.ResponseWriter, session OAuthSession, request mcpRequest, response map[string]any) {
@@ -389,7 +730,7 @@ func handleRemoteMCP(ctx context.Context, backend RemoteMCPBackend, session OAut
 func (h *mcpHTTPHandler) writeMCP(w http.ResponseWriter, value map[string]any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("MCP-Protocol-Version", "2024-11-05")
+	w.Header().Set("MCP-Protocol-Version", mcpCurrentProtocol)
 	_ = json.NewEncoder(w).Encode(value)
 }
 

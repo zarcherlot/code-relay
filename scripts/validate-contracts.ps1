@@ -76,8 +76,39 @@ foreach ($permission in @("contents", "actions", "metadata")) {
 $remoteEnv = Join-Path $root "deploy/remote-mcp.env.example"
 if (-not (Test-Path -LiteralPath $remoteEnv -PathType Leaf)) { throw "Missing hosted MCP environment example" }
 $remoteEnvText = Get-Content -LiteralPath $remoteEnv -Raw
-foreach ($name in @("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID", "CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET", "CODE_RELAY_SESSION_SECRET", "CODE_RELAY_GITHUB_APP_ID", "CODE_RELAY_GITHUB_APP_PRIVATE_KEY_FILE")) {
+foreach ($name in @("CODE_RELAY_GITHUB_OAUTH_CLIENT_ID", "CODE_RELAY_GITHUB_OAUTH_CLIENT_SECRET", "CODE_RELAY_SESSION_SECRET", "CODE_RELAY_GITHUB_APP_ID", "CODE_RELAY_GITHUB_APP_PRIVATE_KEY_FILE", "CODE_RELAY_PUBLIC_BASE_URL", "CODE_RELAY_OAUTH_RESOURCE_URL", "CODE_RELAY_OAUTH_ISSUER_URL", "CODE_RELAY_DATABASE_URL", "CODE_RELAY_REDIS_URL", "CODE_RELAY_SSE_HEARTBEAT_SECONDS", "CODE_RELAY_SSE_MAX_CONNECTIONS")) {
   if ($remoteEnvText -notmatch [regex]::Escape($name)) { throw "Hosted MCP environment example is missing $name" }
+}
+$streamableContract = Read-Json "deploy/streamable-http-contract.json"
+if ($streamableContract.local.transport -ne "stdio") {
+  throw "Local transport contract must remain stdio"
+}
+if ($streamableContract.hosted.transport -ne "streamable-http" -or $streamableContract.hosted.endpoint -ne "/mcp") {
+  throw "Hosted transport contract must use Streamable HTTP at /mcp"
+}
+if (($streamableContract.hosted.methods -join ",") -ne "POST,GET,DELETE") {
+  throw "Hosted /mcp contract must expose POST, GET, and DELETE"
+}
+if (($streamableContract.hosted.responseMediaTypes -join ",") -ne "application/json,text/event-stream") {
+  throw "Hosted /mcp contract must support JSON and SSE responses"
+}
+if ($streamableContract.hosted.session.idHeader -ne "Mcp-Session-Id" -or $streamableContract.hosted.session.resumeHeader -ne "Last-Event-ID") {
+  throw "Hosted /mcp contract is missing session or replay headers"
+}
+$transportDoc = Join-Path $root "deploy/STREAMABLE-HTTP-CONTRACT.md"
+if (-not (Test-Path -LiteralPath $transportDoc -PathType Leaf)) { throw "Missing Streamable HTTP contract" }
+$transportDocText = Get-Content -LiteralPath $transportDoc -Raw
+foreach ($fragment in @("stdio", "POST /mcp", "GET /mcp", "DELETE /mcp", "Mcp-Session-Id", "Last-Event-ID", "text/event-stream", "Protected Resource Metadata", "PostgreSQL", "Redis")) {
+  if ($transportDocText -notmatch [regex]::Escape($fragment)) { throw "Streamable HTTP contract is missing $fragment" }
+}
+foreach ($legacyFragment in @("/sse", "/messages", "session_id=")) {
+  if ($transportDocText -match [regex]::Escape($legacyFragment)) { throw "Streamable HTTP contract contains unsupported endpoint $legacyFragment" }
+}
+$proxyConfig = Join-Path $root "deploy/reverse-proxy-streamable-http.conf.example"
+if (-not (Test-Path -LiteralPath $proxyConfig -PathType Leaf)) { throw "Missing Streamable HTTP reverse-proxy example" }
+$proxyConfigText = Get-Content -LiteralPath $proxyConfig -Raw
+foreach ($fragment in @("proxy_http_version 1.1", "proxy_buffering off", "proxy_read_timeout", "proxy_send_timeout", "X-Accel-Buffering no", 'proxy_set_header Connection ""')) {
+  if ($proxyConfigText -notmatch [regex]::Escape($fragment)) { throw "Reverse proxy example is missing $fragment" }
 }
 $checkpointWorkflowPath = Join-Path $root ".github/workflows/checkpoint.yml"
 if (-not (Test-Path -LiteralPath $checkpointWorkflowPath -PathType Leaf)) { throw "Missing checkpoint workflow" }

@@ -1,0 +1,15 @@
+{
+  "local": {
+    "transport": "stdio"
+  },
+  "hosted": {
+    "transport": "streamable-http",
+    "endpoint": "/mcp",
+    "methods": ["POST", "GET", "DELETE"],
+    "responseMediaTypes": ["application/json", "text/event-stream"],
+    "session": {
+      "idHeader": "Mcp-Session-Id",
+      "resumeHeader": "Last-Event-ID"
+    }
+  }
+}

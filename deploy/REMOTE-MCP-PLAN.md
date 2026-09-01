@@ -27,17 +27,25 @@ rate limits, and audit references.
 
 ## Implementation status
 
-The hosted path is now implemented in the Go gateway. When the GitHub OAuth,
-GitHub App, and session-secret variables are present, `cmd/code-relay-mcp`
-starts in hosted mode; otherwise it keeps the local Bearer-token staging mode.
-Hosted runbook and receipt operations use the GitHub Contents and Actions APIs and
-never read or write `CODE_RELAY_MCP_ROOT`.
+The hosted path is being upgraded to the Streamable HTTP contract in
+`deploy/STREAMABLE-HTTP-CONTRACT.md`. Local/desktop use remains MCP `stdio`.
+When the GitHub OAuth, GitHub App, and session-secret variables are present,
+`cmd/code-relay-mcp` starts in hosted mode. Hosted runbook and receipt
+operations use the GitHub Contents and Actions APIs and never read or write
+`CODE_RELAY_MCP_ROOT`.
+
+This branch is the transport/session foundation, not the public SaaS launch:
+the reference process-local session store must be replaced by Redis (and the
+durable tenant/audit layer by PostgreSQL), and a standards-compliant OAuth
+authorization-code/token endpoint still needs to be integrated before public
+ChatGPT submission.
 
 Authentication endpoints are `/auth/github` (OAuth start),
 `/auth/github/callback` (PKCE callback), `/auth/github/install` (start App
 installation), `/auth/github/app-callback` (bind installation to the signed-in
-user), and `/auth/logout`. MCP clients connect to `/mcp` with the encrypted
-session cookie established by that flow.
+user), and `/auth/logout`. MCP clients connect to `/mcp` with the opaque
+server-side session cookie established by that flow. The encrypted-cookie
+mode remains available for compatibility testing only.
 
 The hosted binding flow accepts repository/ref from the active ChatGPT project
 context. `bind_project` can omit those fields after OAuth; the gateway resolves
@@ -47,27 +55,30 @@ configured for all repositories. If no suitable installation exists, the user
 is sent through the App installation flow for the requested repository; the
 installation ID is never a user-facing input.
 
-OAuth state and sessions are encrypted, short-lived cookies, so the gateway
-does not require a local database or persistent container volume for identity
-state. GitHub remains the source of truth for repository authorization,
-branches, runbook commits, workflow dispatches, and receipts. Rate-limit counters
-and audit events are process-local today; deploy one gateway instance or put a
-shared edge rate limiter in front of a multi-instance deployment.
+OAuth state and browser sessions use short-lived opaque cookies. For SaaS
+production, PostgreSQL is required for durable tenants, members, project
+bindings, runs, and audit references; Redis is required for shared MCP session
+state, event replay, rate limits, and distributed locks. GitHub remains the
+source of truth for repository authorization, branches, runbook commits,
+workflow dispatches, and receipts. Do not use process-local state when more
+than one gateway instance is deployed.
 Set `CODE_RELAY_ALLOWED_REFS` when the hosted deployment should limit users to
 an explicit branch allowlist (for example `owner/repo@refs/heads/main`).
 
 ## Recommended deployment
 
-1. Build `cmd/code-relay-mcp`. Keep `mcp-stdio` unchanged for desktop/local
-   use. Hosted mode exposes only the repository-scoped tools over `/mcp`, plus
-   `/healthz` and the GitHub OAuth/App installation endpoints.
+1. Build `cmd/code-relay-mcp`. Keep MCP `stdio` unchanged for desktop/local
+   use. Hosted mode exposes the repository-scoped tools over Streamable HTTP at
+   `/mcp`, plus `/healthz`, OAuth metadata, and GitHub OAuth/App installation
+   endpoints.
 2. Deploy the gateway as a single Go container on Cloud Run, Fly.io, or an
    equivalent HTTPS container platform. Use a custom host such as
    `mcp.code-relay.example` and expose `/mcp`.
-3. Configure the GitHub OAuth application and the GitHub App using
-   `deploy/remote-mcp.env.example`. The gateway uses authorization code + PKCE,
-   encrypts the session cookie, verifies the user's installation membership,
-   and mints a short-lived installation token for each API operation.
+3. Configure the GitHub OAuth application, GitHub App, PostgreSQL, and Redis
+   using `deploy/remote-mcp.env.example`. The gateway uses authorization code +
+   PKCE, publishes Protected Resource Metadata, encrypts server-side token
+   state, verifies the user's installation membership, and mints a short-lived
+   installation token for each API operation.
 4. Grant the GitHub App only Contents (read/write) and Actions (read/write)
    permissions needed for runbook commits, workflow dispatch, and receipt reads.
    Keep the existing `code-relay-checkpoint` runner isolated and protected by
@@ -101,6 +112,12 @@ fallback. Hosted mode is the GitHub App-backed repository adapter and does not
 require `CODE_RELAY_MCP_ROOT`. Set `OPENAI_APPS_CHALLENGE` only when the
 submission portal supplies a domain-verification token; the gateway then serves
 that exact token at `/.well-known/openai-apps-challenge`.
+
+For an ingress baseline, apply
+`deploy/reverse-proxy-streamable-http.conf.example`. Buffering must be disabled
+for SSE responses, HTTP/1.1 must be preserved, and the proxy read timeout must
+exceed the gateway heartbeat interval. Use a graceful drain window during
+deploys so active `/mcp` event streams can reconnect with `Last-Event-ID`.
 
 ## Tool boundary
 
