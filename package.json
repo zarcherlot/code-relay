@@ -1,0 +1,46 @@
+{
+  "name": "code-relay-mcp",
+  "version": "3.1.0",
+  "description": "Code Relay MCP server for branch-scoped, cross-machine verification.",
+  "license": "MIT",
+  "author": "Code Relay",
+  "type": "commonjs",
+  "bin": {
+    "code-relay": "npm/bin/code-relay-mcp.cjs",
+    "code-relay-mcp": "npm/bin/code-relay-mcp.cjs"
+  },
+  "files": [
+    "npm/",
+    "install.md",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test npm/test/*.test.cjs",
+    "verify": "node npm/scripts/verify-package.cjs",
+    "prepack": "npm run test && npm run verify"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zarcherlot/code-relay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zarcherlot/code-relay/issues"
+  },
+  "homepage": "https://github.com/zarcherlot/code-relay#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "codex",
+    "verification",
+    "github"
+  ],
+  "mcpName": "io.github.zarcherlot/code-relay",
+  "publishConfig": {
+    "access": "public"
+  }
+}

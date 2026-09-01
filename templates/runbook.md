@@ -1,7 +1,7 @@
 # Runbook
 - runbook_id: runbook-001
 - source_commit: <merged-commit-sha>
-- target: B
+- target: checkpoint
 - objective: 用一句话描述本轮目标
 
 ## Validation Plan

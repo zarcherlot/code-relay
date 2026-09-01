@@ -48,9 +48,27 @@ Relay binds every runbook to a repository, branch, and source commit. The Target
    > Enable Code Relay for the current project and branch, then generate a Target Host join link.
 
 3. On the Target Host, install the same plugin and paste the link into Codex.
-4. The Target Host joins the approved repository and branch as its checkpoint, executes runbooks on the `codex-b` GitHub Actions runner, and publishes a receipt.
+4. The Target Host joins the approved repository and branch as its checkpoint, executes runbooks on the `code-relay-checkpoint` GitHub Actions runner, and publishes a receipt.
 
 Users do not need to install Python, Go, or a separate Relay runtime for the packaged plugin. See [USER_GUIDE.md](USER_GUIDE.md) for the complete journey and recovery steps.
+
+### Install through npm (any MCP client)
+
+Code Relay is also distributed as `code-relay-mcp`. An AI client can follow
+[install.md](install.md), or you can preview and apply the client-specific
+installer directly:
+
+```sh
+npx -y code-relay-mcp@latest install --client codex
+npx -y code-relay-mcp@latest install --client codex --yes
+```
+
+Replace `codex` with `claude-code`, `cursor`, `vscode`, or `generic` as needed.
+Node.js 18+ is required. The npm launcher downloads the matching native release
+binary on first use, verifies it against `SHA256SUMS`, and caches it locally; Go
+is not required. The npm distribution exposes the MCP tools, while the Codex
+plugin additionally supplies the `$code-relay:relay` and
+`$code-relay:checkpoint` Skills.
 
 ### Install from this repository (local desktop)
 
@@ -79,7 +97,7 @@ for cloning the repository and installing Git, PowerShell 7, and Go 1.26+ first.
 
 - Branch-scoped project binding and short-lived join links.
 - Exact source-commit verification in an isolated worktree.
-- Checkpoint execution through a `codex-b` GitHub Actions self-hosted runner.
+- Checkpoint execution through a `code-relay-checkpoint` GitHub Actions self-hosted runner.
 - Safe, allowlisted validation commands with bounded output and timeouts.
 - Structured `receipt.json` plus a human-readable receipt for pass, fail, and blocked runs.
 
@@ -91,6 +109,9 @@ The repository targets Go 1.26+:
 go test ./...
 go vet ./...
 go build ./cmd/code-relay-agent
+npm ci
+npm test
+npm run verify
 ./scripts/validate-contracts.ps1
 ./scripts/smoke-e2e.ps1
 ```
@@ -101,6 +122,7 @@ Build the bundled agent for the current platform with `./scripts/build-agent.ps1
 
 - [中文 README](README.zh-CN.md)
 - [User guide](USER_GUIDE.md)
+- [AI-client installation guide](install.md)
 - [Local desktop install runbook](deploy/LOCAL-INSTALL-RUNBOOK.md)
 - [Deployment and runbook](deploy/RUNBOOK.md)
 - [Security](SECURITY.md)

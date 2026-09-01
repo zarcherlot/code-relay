@@ -15,7 +15,7 @@ ChatGPT plugin
   -> HTTPS /mcp + OAuth 2.1
   -> Code Relay MCP gateway
   -> GitHub API (runbook commit / workflow dispatch / receipt read)
-  -> dedicated codex-b self-hosted runner
+  -> dedicated code-relay-checkpoint self-hosted runner
   -> existing code-relay-agent run-pending
   -> receipts/<runbook-id> pushed to the bound branch
 ```
@@ -70,7 +70,7 @@ an explicit branch allowlist (for example `owner/repo@refs/heads/main`).
    and mints a short-lived installation token for each API operation.
 4. Grant the GitHub App only Contents (read/write) and Actions (read/write)
    permissions needed for runbook commits, workflow dispatch, and receipt reads.
-   Keep the existing `codex-b` runner isolated and protected by
+   Keep the existing `code-relay-checkpoint` runner isolated and protected by
    repository/branch policy.
 5. Add request size, concurrency, timeout, and per-user rate limits at the
    gateway. Return structured MCP errors and redact tokens, remotes, and
@@ -120,7 +120,7 @@ local/admin operations.
 1. Unit and race tests for OAuth/PKCE, GitHub API calls, the HTTP adapter,
    authentication middleware, and remote tool routing.
 2. MCP Inspector checks for tool schemas, annotations, errors, and limits.
-3. A staging GitHub App and isolated `codex-b` runner.
+3. A staging GitHub App and isolated `code-relay-checkpoint` runner.
 4. Positive, negative, and boundary cases from
    `deploy/REMOTE-MCP-TEST-MATRIX.md`.
 5. Privacy policy update covering hosted data retention and subprocessors.

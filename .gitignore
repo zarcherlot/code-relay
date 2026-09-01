@@ -10,3 +10,6 @@ bin/*.exe
 .gocache/
 .gomodcache/
 .pytest_cache/
+node_modules/
+*.tgz
+.npm-cache/

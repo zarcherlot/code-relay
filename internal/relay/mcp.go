@@ -170,7 +170,7 @@ func readMCPLine(reader *bufio.Reader, limit int) ([]byte, bool, error) {
 	}
 }
 
-var versionString = "3.0.0"
+var versionString = "3.1.0"
 
 func SetVersion(value string) {
 	if value != "" {

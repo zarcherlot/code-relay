@@ -16,7 +16,7 @@ import (
 	"github.com/zarcherlot/code-relay/internal/relay"
 )
 
-var version = "3.0.0"
+var version = "3.1.0"
 
 func main() {
 	relay.SetVersion(version)

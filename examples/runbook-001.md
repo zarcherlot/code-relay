@@ -1,7 +1,7 @@
 # Runbook
 - runbook_id: runbook-001
 - source_commit: 0000000
-- target: B
+- target: checkpoint
 - objective: 验证 Code Relay MVP 的最小闭环
 
 ## Validation Plan

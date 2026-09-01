@@ -12,13 +12,19 @@ on:
       - "scripts/**"
       - "examples/**"
       - "deploy/**"
+      - "npm/**"
       - ".codex-plugin/**"
       - ".mcp.json"
+      - "package.json"
+      - "package-lock.json"
+      - "server.json"
+      - "install.md"
       - "go.mod"
       - "README*.md"
       - "CONTRIBUTING.md"
       - "SECURITY.md"
       - ".github/workflows/go-runtime.yml"
+      - ".github/workflows/publish-mcp.yml"
       - "Dockerfile"
       - ".dockerignore"
   pull_request:
@@ -29,12 +35,18 @@ on:
       - "scripts/**"
       - "examples/**"
       - "deploy/**"
+      - "npm/**"
       - ".codex-plugin/**"
       - ".mcp.json"
+      - "package.json"
+      - "package-lock.json"
+      - "server.json"
+      - "install.md"
       - "go.mod"
       - "README*.md"
       - "CONTRIBUTING.md"
       - "SECURITY.md"
+      - ".github/workflows/publish-mcp.yml"
       - "Dockerfile"
       - ".dockerignore"
 
@@ -56,6 +68,10 @@ jobs:
         with:
           go-version: "1.27"
           cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
       - name: Check formatting
         shell: bash
         run: |
@@ -66,6 +82,13 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: go test -race ./...
       - run: go vet ./...
+      - name: Validate npm distribution
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run verify
+          node ./npm/bin/code-relay-mcp.cjs version
+          node ./npm/bin/code-relay-mcp.cjs install --client generic
       - name: Validate protocol and plugin contracts
         shell: pwsh
         run: ./scripts/validate-contracts.ps1

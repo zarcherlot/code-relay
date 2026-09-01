@@ -53,9 +53,25 @@ Relay 将每份 runbook 绑定到仓库、分支和 source commit。目标机作
    当前仓库和分支并自动完成绑定。
 
 3. 在目标机安装同一个插件，把加入链接粘贴到 Codex 中。
-4. 目标机作为 Checkpoint 加入获准的仓库和分支，通过带 `codex-b` 标签的 GitHub Actions runner 执行 runbook 并发布 Receipt。
+4. 目标机作为 Checkpoint 加入获准的仓库和分支，通过带 `code-relay-checkpoint` 标签的 GitHub Actions runner 执行 runbook 并发布 Receipt。
 
 打包后的插件不需要用户安装 Python、Go 或单独的 Relay runtime。完整流程和故障恢复见 [USER_GUIDE.md](USER_GUIDE.md)。
+
+### 通过 npm 安装（任意 MCP 客户端）
+
+Code Relay 同时以 `code-relay-mcp` 发布。AI 客户端可以直接遵循
+[install.md](install.md)，也可以先预览、再执行客户端专用安装器：
+
+```sh
+npx -y code-relay-mcp@latest install --client codex
+npx -y code-relay-mcp@latest install --client codex --yes
+```
+
+可将 `codex` 替换为 `claude-code`、`cursor`、`vscode` 或 `generic`。需要
+Node.js 18+；首次启动时，npm launcher 会下载当前平台对应的原生 Release
+二进制，使用 `SHA256SUMS` 校验后写入本机缓存，不需要 Go。npm 发行包提供
+MCP 工具，Codex 插件还会额外提供 `$code-relay:relay` 与
+`$code-relay:checkpoint` Skill。
 
 ### 从本仓库安装到桌面版（本地安装）
 
@@ -84,7 +100,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
 
 - 分支级项目绑定和短时加入链接。
 - 在隔离 worktree 中验证精确的 source commit。
-- 通过 `codex-b` self-hosted runner 建立 Checkpoint。
+- 通过 `code-relay-checkpoint` self-hosted runner 建立 Checkpoint。
 - 验证命令白名单、输出大小和超时控制。
 - 结构化 `receipt.json` 与人类可读回执，覆盖通过、失败和阻塞状态。
 
@@ -96,6 +112,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass `
 go test ./...
 go vet ./...
 go build ./cmd/code-relay-agent
+npm ci
+npm test
+npm run verify
 ./scripts/validate-contracts.ps1
 ./scripts/smoke-e2e.ps1
 ```
@@ -106,6 +125,7 @@ go build ./cmd/code-relay-agent
 
 - [English README](README.md)
 - [用户指南](USER_GUIDE.md)
+- [AI 客户端安装指南](install.md)
 - [本机安装运行手册](deploy/LOCAL-INSTALL-RUNBOOK.md)
 - [部署与运行手册](deploy/RUNBOOK.md)
 - [安全说明](SECURITY.md)

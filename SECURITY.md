@@ -6,7 +6,7 @@ Code Relay moves source references, runbook instructions, validation commands, a
 
 ## Current MVP boundaries
 
-- Invitations are short-lived bearer links by default. Set `CODE_RELAY_INVITE_SECRET` to the same 32+ character secret on A and B to add HMAC integrity verification. Anyone who obtains an unexpired unsigned link can otherwise attempt to join the encoded repository/ref. Do not paste invitations or secrets into public issues or logs.
+- Invitations are short-lived bearer links by default. Set `CODE_RELAY_INVITE_SECRET` to the same 32+ character secret on the Dev Host and Checkpoint Host to add HMAC integrity verification. Anyone who obtains an unexpired unsigned link can otherwise attempt to join the encoded repository/ref. Do not paste invitations or secrets into public issues or logs.
 - The checkpoint runtime allowlists project executables, rejects shell interpreters and inline eval/exec escape modes, and blocks destructive command patterns. This is defense-in-depth rather than a sandbox.
 - Use a dedicated low-privilege self-hosted runner and a separate worktree for validation.
 - Give GitHub tokens only the minimum contents/actions permissions required to fetch runbooks and publish receipts.
@@ -36,3 +36,17 @@ Before production use, the project should add asymmetric signed invitations or a
 - Configuration, runbooks, receipts, and locks stay inside the project root, use durable atomic replacement, and reject symlink path components. Remote credentials are removed from persisted metadata and errors.
 - MCP input has strict JSON-RPC and parameter validation, bounded request sizes, and recovery after malformed or oversized messages.
 - Git and validation child-process trees have timeouts, output limits, and sensitive environment filtering. Use `code-relay-agent doctor --root <project>` before enabling a runner.
+
+## npm distribution boundary
+
+- `code-relay-mcp` contains a zero-dependency Node.js launcher, not a second MCP
+  implementation. It downloads only the platform asset for the exact npm
+  package version from the matching GitHub Release.
+- The launcher retrieves `SHA256SUMS`, rejects missing or mismatched entries,
+  uses bounded HTTPS downloads, and caches the verified binary per version.
+- `CODE_RELAY_AGENT_PATH` may explicitly select an administrator-provided
+  binary. Treat that variable as a privileged deployment override.
+- The client installer refuses invalid JSON, preserves unrelated MCP entries,
+  creates a backup before rewriting an existing JSON file, and requires
+  `--yes`; replacing an existing Code Relay entry additionally requires
+  `--force`.

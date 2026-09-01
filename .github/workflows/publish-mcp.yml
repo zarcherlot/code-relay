@@ -1,0 +1,114 @@
+name: Publish npm and MCP Registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag to publish, for example v3.1.0
+        required: true
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version }}
+      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+      MCP_PUBLISHER_VERSION: v1.8.1
+      MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.version }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - name: Validate release and package versions
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          version="${RELEASE_TAG#v}"
+          test "$(node -p "require('./package.json').version")" = "$version"
+          test "$(node -p "require('./server.json').version")" = "$version"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          npm ci --ignore-scripts
+          npm test
+          npm run verify
+      - name: Check npm publication
+        id: npm
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish npm package with bootstrap token
+        if: steps.npm.outputs.published != 'true' && env.HAS_NPM_TOKEN == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
+      - name: Publish npm package with trusted publishing
+        if: steps.npm.outputs.published != 'true' && env.HAS_NPM_TOKEN != 'true'
+        run: npm publish --access public
+      - name: Wait for npm package visibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          for attempt in {1..24}; do
+            npm view "$name@$version" version >/dev/null 2>&1 && exit 0
+            sleep 5
+          done
+          echo "npm package did not become visible: $name@$version" >&2
+          exit 1
+      - name: Install verified MCP Publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=mcp-publisher_linux_amd64.tar.gz
+          base="https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION"
+          curl --fail --location --silent --show-error "$base/$archive" --output "$archive"
+          echo "$MCP_PUBLISHER_SHA256  $archive" | sha256sum --check --strict
+          tar xzf "$archive" mcp-publisher
+          chmod +x mcp-publisher
+          ./mcp-publisher validate server.json
+      - name: Check MCP Registry publication
+        id: registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./server.json').version")"
+          encoded_name="io.github.zarcherlot%2Fcode-relay"
+          url="https://registry.modelcontextprotocol.io/v0.1/servers/$encoded_name/versions/$version"
+          if curl --fail --silent --show-error "$url" >/dev/null; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish MCP Registry entry
+        if: steps.registry.outputs.published != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish server.json

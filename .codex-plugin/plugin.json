@@ -1,6 +1,6 @@
 {
   "name": "code-relay",
-  "version": "3.0.0+codex.20260831154110",
+  "version": "3.1.0",
   "description": "Branch-scoped orchestration and verification for Code Relay projects.",
   "author": {
     "name": "Code Relay",
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Code Relay",
     "shortDescription": "Connect a Codex project to a remote verification branch.",
-    "longDescription": "Code Relay binds the current project and branch, lets A orchestrate development, and lets B Codex verify pushed runbooks and publish receipts.",
+    "longDescription": "Code Relay binds the current project and branch, lets the Dev Host orchestrate development, and lets the Checkpoint Host verify pushed runbooks and publish receipts.",
     "developerName": "Code Relay",
     "category": "Developer Tools",
     "capabilities": [

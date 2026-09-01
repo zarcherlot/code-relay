@@ -23,7 +23,7 @@ import (
 const testRunbook = `# Runbook
 - runbook_id: go-test
 - source_commit: abc1234
-- target: B
+- target: checkpoint
 - objective: smoke
 
 ## Validation Plan
