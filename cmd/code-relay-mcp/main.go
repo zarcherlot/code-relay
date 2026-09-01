@@ -137,6 +137,12 @@ func main() {
 				fatal("configure Redis session store: %v", storeErr)
 			}
 			oauthConfig.SessionStore = store
+			eventStore, eventErr := relay.NewRedisSessionEventStore(redisClient, os.Getenv("CODE_RELAY_REDIS_KEY_PREFIX"))
+			if eventErr != nil {
+				_ = redisClient.Close()
+				fatal("configure Redis event store: %v", eventErr)
+			}
+			config.EventStore = eventStore
 			defer redisClient.Close()
 		} else if !strings.EqualFold(envOr("CODE_RELAY_SESSION_STORE", "memory"), "cookie") {
 			fatal("CODE_RELAY_SESSION_STORE must be memory, redis, or cookie")

@@ -10,6 +10,19 @@ import (
 	"time"
 )
 
+type captureEventStore struct {
+	count int
+}
+
+func (s *captureEventStore) Publish(_ context.Context, _ string, _ []byte, _ int) (string, error) {
+	s.count++
+	return "1-0", nil
+}
+
+func (s *captureEventStore) Read(context.Context, string, string, time.Duration) ([]SessionEvent, error) {
+	return nil, nil
+}
+
 func TestStreamableHTTPInitializeSSECreatesOwnedSession(t *testing.T) {
 	token := strings.Repeat("t", 32)
 	handler, err := MCPHTTPHandler(MCPHTTPConfig{Root: t.TempDir(), BearerToken: token})
@@ -120,5 +133,34 @@ func TestStreamableHTTPDrainRejectsNewRequests(t *testing.T) {
 	defer cancel()
 	if err := drainable.WaitForDrain(ctx); err != nil {
 		t.Fatalf("drain wait failed: %v", err)
+	}
+}
+
+func TestStreamableHTTPPublishesToolLifecycleEvents(t *testing.T) {
+	token := strings.Repeat("t", 32)
+	events := &captureEventStore{}
+	handler, err := MCPHTTPHandler(MCPHTTPConfig{Root: t.TempDir(), BearerToken: token, EventStore: events})
+	if err != nil {
+		t.Fatal(err)
+	}
+	initReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)))
+	initReq.Header.Set("Authorization", "Bearer "+token)
+	initReq.Header.Set("Content-Type", "application/json")
+	initReq.RemoteAddr = "192.0.2.1:1234"
+	initRes := httptest.NewRecorder()
+	handler.ServeHTTP(initRes, initReq)
+	sessionID := initRes.Header().Get("Mcp-Session-Id")
+	if sessionID == "" {
+		t.Fatal("initialize did not create session")
+	}
+	callReq := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"doctor","arguments":{}}}`)))
+	callReq.Header.Set("Authorization", "Bearer "+token)
+	callReq.Header.Set("Content-Type", "application/json")
+	callReq.Header.Set("Mcp-Session-Id", sessionID)
+	callReq.RemoteAddr = "192.0.2.1:1234"
+	callRes := httptest.NewRecorder()
+	handler.ServeHTTP(callRes, callReq)
+	if callRes.Code != http.StatusOK || events.count != 2 {
+		t.Fatalf("tool lifecycle status/events = %d/%d", callRes.Code, events.count)
 	}
 }

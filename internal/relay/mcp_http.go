@@ -47,6 +47,7 @@ type MCPHTTPConfig struct {
 	SSEMaxQueue       int
 	SSEEventHistory   int
 	MaxSSEConnections int
+	EventStore        SessionEventStore
 }
 
 // MCPHTTPHandler returns an authenticated HTTP handler for the MCP endpoint.
@@ -310,6 +311,9 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeMCP(w, response)
 		return
 	}
+	if mcpSessionID != "" && request.Method == "tools/call" {
+		h.publishSessionEvent(mcpSessionID, map[string]any{"jsonrpc": "2.0", "method": "notifications/message", "params": map[string]any{"level": "info", "data": "tool execution started", "tool": requestToolName(request)}})
+	}
 	select {
 	case h.semaphore <- struct{}{}:
 		defer func() { <-h.semaphore }()
@@ -328,6 +332,13 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		response = handleMCP(request)
 	}
 	h.config.AuditLogger.Info("mcp tool request", "subject", clientID, "login", session.Login, "method", request.Method, "tool", requestToolName(request), "ok", response != nil && response["error"] == nil, "duration_ms", time.Since(started).Milliseconds())
+	if mcpSessionID != "" && request.Method == "tools/call" {
+		status := "completed"
+		if response == nil || response["error"] != nil {
+			status = "failed"
+		}
+		h.publishSessionEvent(mcpSessionID, map[string]any{"jsonrpc": "2.0", "method": "notifications/message", "params": map[string]any{"level": "info", "data": "tool execution " + status, "tool": requestToolName(request)}})
+	}
 	if response != nil && (request.HasID || request.JSONRPC != "2.0" || request.Method == "") {
 		if acceptsMCPEventStream(r.Header.Get("Accept")) {
 			h.writeMCPSSE(w, response)
@@ -337,6 +348,21 @@ func (h *mcpHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else if response == nil {
 		w.WriteHeader(http.StatusAccepted)
 	}
+}
+
+// SessionEventStore provides cross-instance ordered event delivery for the
+// Streamable HTTP GET stream. Implementations must return events strictly
+// after the supplied cursor and may block until the requested timeout.
+type SessionEventStore interface {
+	Publish(context.Context, string, []byte, int) (string, error)
+	Read(context.Context, string, string, time.Duration) ([]SessionEvent, error)
+}
+
+// SessionEvent is the public event representation used by shared event-store
+// implementations. IDs must be ordered cursors within a session.
+type SessionEvent struct {
+	ID   string
+	Data []byte
 }
 
 // BeginDrain stops admitting new MCP requests while allowing active SSE
@@ -383,6 +409,12 @@ func (h *mcpHTTPHandler) publishSessionEvent(id string, value map[string]any) {
 	}
 	data, err := json.Marshal(value)
 	if err != nil {
+		return
+	}
+	if h.config.EventStore != nil {
+		if _, err := h.config.EventStore.Publish(context.Background(), id, data, h.config.SSEEventHistory); err != nil {
+			h.config.AuditLogger.Warn("mcp event publish failed", "session_id", id, "error", err)
+		}
 		return
 	}
 	session.mu.Lock()
@@ -557,6 +589,10 @@ func (h *mcpHTTPHandler) sessionSSE(w http.ResponseWriter, r *http.Request, id, 
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("MCP-Protocol-Version", mcpCurrentProtocol)
+	if h.config.EventStore != nil {
+		h.sessionSSEExternal(w, r, session, lastID, flusher)
+		return
+	}
 	h.mu.Lock()
 	if h.config.MaxSSEConnections > 0 && h.sseConnections >= h.config.MaxSSEConnections {
 		h.mu.Unlock()
@@ -606,6 +642,34 @@ func (h *mcpHTTPHandler) sessionSSE(w http.ResponseWriter, r *http.Request, id, 
 			_, _ = io.WriteString(w, ": heartbeat\n\n")
 			flusher.Flush()
 		}
+	}
+}
+
+func (h *mcpHTTPHandler) sessionSSEExternal(w http.ResponseWriter, r *http.Request, session *mcpHTTPSession, lastID string, flusher http.Flusher) {
+	cursor := strings.TrimSpace(lastID)
+	if cursor == "" {
+		cursor = "0-0"
+	}
+	for {
+		events, err := h.config.EventStore.Read(r.Context(), session.id, cursor, h.config.SSEHeartbeat)
+		if err != nil {
+			if r.Context().Err() != nil {
+				return
+			}
+			_, _ = io.WriteString(w, "event: error\ndata: {\"error\":\"event store unavailable\"}\n\n")
+			flusher.Flush()
+			return
+		}
+		if len(events) == 0 {
+			_, _ = io.WriteString(w, ": heartbeat\n\n")
+			flusher.Flush()
+			continue
+		}
+		for _, event := range events {
+			writeSSEEvent(w, mcpSSEEvent{id: event.ID, data: event.Data})
+			cursor = event.ID
+		}
+		flusher.Flush()
 	}
 }
 
